@@ -20,8 +20,8 @@ jobs:
           for dir in */; do
             if [ -f "$dir/package.json" ]; then
               cd $dir
-              npm install
-              npm run build
+              npm install 
+              npm run build -- --no-export
               mv dist ../_site/${dir%/}
               cd ..
             fi
