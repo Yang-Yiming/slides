@@ -29,6 +29,9 @@ jobs:
         with:
           node-version: 'lts/*'
 
+      - name: Install dependencies (playwright)
+        run: npx playwright install --with-deps chromium
+
       - name: Build all Slidev decks
         run: |
           mkdir -p _site
@@ -36,7 +39,6 @@ jobs:
             if [ -f "$dir/package.json" ]; then
               cd "$dir"
               npm install
-              # 构建时禁用 PDF 导出；定义正确的 base 路径（./$dir/）
               npm run build -- --download=false --base "/${{ github.event.repository.name }}/${dir%/}/"
               mv dist "../_site/${dir%/}"
               cd ..
