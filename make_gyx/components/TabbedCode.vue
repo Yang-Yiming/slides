@@ -51,6 +51,7 @@ const activeTabIndex = ref(0);
   cursor: pointer;
   outline: none;
   transition: background-color 0.3s;
+  color: #333;
 }
 
 .tabs button:hover {
@@ -59,9 +60,10 @@ const activeTabIndex = ref(0);
 
 .tabs button.active {
   background-color: #fff;
-  border-color: #fff;
+  border-color: #eee;
   z-index: 1;
   transform: translateY(1px);
+  color: #333;
 }
 
 .content-wrapper {
@@ -69,5 +71,31 @@ const activeTabIndex = ref(0);
   border-radius: 0 5px 5px 5px;
   padding: 10px;
   background-color: #fff;
+  color: #333;
+}
+
+/* 深色模式样式 */
+@media (prefers-color-scheme: dark) {
+  .tabs button {
+    background-color: #3a3a3a;
+    border-color: #555;
+    color: #e0e0e0;
+  }
+
+  .tabs button:hover {
+    background-color: #4a4a4a;
+  }
+
+  .tabs button.active {
+    background-color: #2d2d2d;
+    border-color: #666;
+    color: #e0e0e0;
+  }
+
+  .content-wrapper {
+    background-color: #2d2d2d;
+    border-color: #555;
+    color: #e0e0e0;
+  }
 }
 </style>
