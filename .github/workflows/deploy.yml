@@ -1,9 +1,9 @@
-name: Deploy Slides to GitHub Pages
+name: Deploy pages
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -12,51 +12,50 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
           node-version: 'lts/*'
 
-      - name: Build all Slidev decks
+      - name: Setup @antfu/ni
+        run: npm i -g @antfu/ni
+
+      - name: Build all subfolders
         run: |
-          mkdir -p _site
           for dir in */; do
-            if [ -f "$dir/package.json" ]; then
+            if [ -d "$dir" ] && [ -f "$dir/package.json" ]; then
+              echo "Building $dir"
               cd "$dir"
-              npm install
-              npx playwright install --with-deps chromium
-              npm run build -- --download=false --base "/${{ github.event.repository.name }}/${dir%/}/"
-              mv dist "../_site/${dir%/}"
+              nci
+              nr build --base /${{github.event.repository.name}}/$dir
               cd ..
+              mkdir -p dist/$dir
+              cp -r $dir/dist/* dist/$dir/
             fi
           done
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      - name: Upload site artifacts
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: dist
 
   deploy:
-    needs: build
-    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    needs: build
+    runs-on: ubuntu-latest
+    name: Deploy
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
