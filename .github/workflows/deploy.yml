@@ -28,19 +28,47 @@ jobs:
       - name: Setup @antfu/ni
         run: npm i -g @antfu/ni
 
+      - name: Install Playwright (once)
+        run: npx -y playwright@latest install --with-deps chromium
+
       - name: Build all subfolders
         run: |
+          set -e
+          mkdir -p dist
           for dir in */; do
-            if [ -d "$dir" ] && [ -f "$dir/package.json" ]; then
-              echo "Building $dir"
-              cd "$dir"
-              nci
-              nr build --base /${{github.event.repository.name}}/$dir
-              cd ..
-              mkdir -p dist/$dir
-              cp -r $dir/dist/* dist/$dir/
+            if [ -d "$dir" ] && [ -f "$dir/package.json" ] && [ -f "$dir/slides.md" ]; then
+              dir_name="${dir%/}"
+              echo "Building $dir_name"
+              pushd "$dir_name" >/dev/null
+              ni
+              ni -D playwright-chromium
+              npx playwright install chromium
+              nr build --base /${{ github.event.repository.name }}/$dir_name/
+              popd >/dev/null
+              mkdir -p "dist/$dir_name"
+              if [ -d "$dir_name/dist" ]; then
+                cp -r "$dir_name/dist/"* "dist/$dir_name/" || true
+              fi
+            else
+              echo "Skip $dir (no package.json or slides.md)"
             fi
           done
+
+      - name: Generate root index.html
+        run: |
+          {
+            echo '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Slides Index</title>'
+            echo '<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;padding:2rem;max-width:900px;margin:auto}h1{font-size:1.6rem}ul{line-height:1.9}a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}</style></head><body>'
+            echo '<h1>Slides Index</h1><ul>'
+            for dir in dist/*/; do
+              name=${dir#dist/}
+              name=${name%/}
+              if [ -f "dist/$name/index.html" ]; then
+                echo "<li><a href='./$name/'>$name</a></li>"
+              fi
+            done
+            echo '</ul></body></html>'
+          } > dist/index.html
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
