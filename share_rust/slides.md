@@ -100,6 +100,96 @@ transition: fade-out
 level: 2
 ---
 
+# 一些失败尝试
+
+| 方法  | 通过题数 | 得分  | 总用时(s)  | 速度倍率  | 备注 |
+| --- | --- | --- | --- | --- | --- |
+| 上文提及方法     | 3    | 10  | 906.97  | 1     |    |
+| 卷积 + scatter  | 0    | 0   | -     | 0     | 增加了 bootstrap 次数 |
+| 加法树降低深度。保存会被多次计算的地方 | 0  | 0   | 690.9   | 1.31  | m n较小时表现差   |
+| Parallelized PBS([文档](https://docs.zama.ai/tfhe-rs/configuration/parallelized-pbs)) | 2    | 5   | 682.94  | 1.32  | 问题同上<br>              |
+| 每线程细胞数：4   | 2    | 5   | 1181.76 | 0.77  | |
+| 8    | 2    | 5   | 1176.23 | 0.77  |      |
+| 16  | 2    | 5   | 1307.28 | 0.694 |   |
+
+
+---
+transition: fade-out
+level: 2
+---
+
+# `FheUInt8` $\to$ `FheBool`
+
+降低计算的 bit 数，且适合生命游戏。只要实现 3 位加法器用于计数。
+
+## 加法器
+
+半加器
+
+```rust
+fn half_adder(a: &FheBool, b: &FheBool) -> (FheBool, FheBool) {
+    let sum = a ^ b;
+    let carry = a & b;
+    (sum, carry)
+}
+```
+
+---
+transition: fade-out
+level: 2
+---
+
+# 史山加法树
+
+```rust
+// 加法树
+// 第一层
+let (s1, c1) = half_adder(&neighbors_vals[0], &neighbors_vals[1]);
+let (s2, c2) = half_adder(&neighbors_vals[2], &neighbors_vals[3]);
+let (s3, c3) = half_adder(&neighbors_vals[4], &neighbors_vals[5]);
+let (s4, c4) = half_adder(&neighbors_vals[6], &neighbors_vals[7]);
+
+// 第一位 和位
+let (s12, c12) = half_adder(&s1, &s2);
+let (s34, c34) = half_adder(&s3, &s4);
+let (bit0, c_bit0) = half_adder(&s12, &s34); // 最低位
+
+// 第一位 进位
+let (c_temp1, c_temp1_carry) = half_adder(&c1, &c2);
+let (c_temp2, c_temp2_carry) = half_adder(&c3, &c4);
+let (c_sum, c_sum_carry) = half_adder(&c_temp1, &c_temp2);
+
+// 第二位
+let (bit1_part1, bit1_carry1) = half_adder(&c12, &c34);
+let (bit1_part2, bit1_carry2) = half_adder(&bit1_part1, &c_bit0);
+let (bit1, bit1_final_carry) = half_adder(&bit1_part2, &c_sum);
+```
+
+---
+transition: fade-out
+level: 2
+---
+
+```rust
+
+// 第三位
+let bit2_temp1 = &c_temp1_carry | &c_temp2_carry;
+let bit2_temp2 = &c_sum_carry | &bit1_carry1;
+let bit2_temp3 = &bit1_carry2 | &bit1_final_carry;
+let bit2 = &bit2_temp1 | &bit2_temp2 | &bit2_temp3;
+
+let is2 = !&bit0 & &bit1 & !&bit2; // 010
+let is3 = &bit0 & &bit1 & !&bit2; // 011
+is3 | (is2 & &grid[x][y])
+
+```
+
+
+---
+transition: fade-out
+level: 2
+---
+
 # 问题
 =
 
