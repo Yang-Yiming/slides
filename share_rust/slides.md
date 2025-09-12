@@ -184,6 +184,57 @@ is3 | (is2 & &grid[x][y])
 
 ```
 
+---
+transition: fade-out
+level: 2
+---
+
+# Bonus - 0 分
+
+- 使用了经典的 BKZ
+- 写了一个 `test_params.rs`, 工作与 `main.rs` 一致，不过暴露了命令行接口，使用 python 调整
+- 使用 _多臂老虎机_ 优化每个超参数。
+
+```rust
+impl Default for BkzConfig {
+	fn default() -> Self {
+		Self {
+			svp_enum_max_dim: 7,
+			svp_enum_range_small: 80,
+			
+			......
+			
+			progressive_lll_stages: 5,
+			target_quality: 5.205890882219243,
+			min_rounds: 8,
+			quality_improvement_threshold: 0.03138306230175474,
+		}
+	}
+}
+
+```
+
+---
+transition: fade-out
+level: 2
+---
+
+# 奖励函数
+
+```rust
+  let case_score = if pass {
+    // When pass: higher score for faster execution
+    (base_score as f64 * 100.0) / (duration.as_secs_f64() + 1.0)
+  } else {
+  // When fail: bigger penalty for larger error norm
+    let error_penalty = error_norm * 10.0; // Scale error norm for penalty
+    -(base_score as f64 * 50.0 + error_penalty) / (duration.as_secs_f64() + 0.1)
+  };
+```
+
+鼓励快速且正确，惩罚快速但错误的行为
+~~（因为原先没有惩罚，训练出了超级快但全错的参数组合）~~。
+
 
 ---
 transition: fade-out
@@ -193,8 +244,33 @@ level: 2
 # 问题
 =
 
-- `main.rs` 要求和原始 secret 完全一致，但是最终精度始终不够。
-- 在 $n>5$ 时，构造的格基会线性相关导致 BKZ 产生接近 $\mathbf{0}$ 结果
+- `main.rs` 得分要求和原始 secret 完全一致，但是最终精度始终不够。
+- 在 n 较大时，构造的格基会线性相关导致 BKZ 产生接近 $\mathbf{0}$。于是考虑更改格基的构造
+  - 尝试过的格基：
+
+  - $$
+    L = \begin{pmatrix}
+    I_{m-n} & Y' \\
+    0 & qI_{n}
+    \end{pmatrix}
+    $$
+
+  - $$
+    B=\begin{pmatrix}
+    I_{n} & A' & 0 \\
+    & qI_{m-n} & 0 \\
+    c^T &  & t
+    \end{pmatrix}
+    $$
+
+  - $$
+    B=\begin{pmatrix}
+    A^T \\
+    qI \\
+    c^T
+    \end{pmatrix}
+    $$
+
 - 产生 $\mathbf{0}$ 后 Gram-Schmidt 失效 $\to$ Babai 失效 $\to$ LWE 爆了
 
 
