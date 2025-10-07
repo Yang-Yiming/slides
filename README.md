@@ -1,4 +1,5 @@
 # Content List
 
-- [make_gyx | simple tutorial for Makefile & Cmake](https://yang-yiming.github.io/slides/make_gyx/1)
-- [share_rust | share for the SUSTCSC competition - rust](https://yang-yiming.github.io/slides/share_rust/1)
+- [make_gyx | simple tutorial for Makefile & Cmake](https://yang-yiming.github.io/slides/make_gyx/)
+- [share_rust | share for the SUSTCSC competition - rust](https://yang-yiming.github.io/slides/share_rust/)
+- [fcy_papers | Short summary of prof. FuChaoyou's papers(2024-2025)](https://yang-yiming.github.io/slides/fcy_papers/)
