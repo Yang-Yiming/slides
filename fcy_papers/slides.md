@@ -145,3 +145,168 @@ Four Stages:
 ---
 
 # MME
+**M**ulti**m**odal Evaluation Benchmark
+
+- MME: A Comprehensive Evaluation Benchmark  for Multimodal Large Language Models
+
+- MME-RealWorld: Could Your Multimodal LLM Challenge High-Resolution Real-World Scenarios that are Difficult for Humans?
+
+- Video MME
+
+- etc.
+
+---
+
+# MME
+
+## 着重点：
+
+- 覆盖广, including perception and cognition abilities.
+
+- Avoid data leakage
+
+- Insturciton should be **clear**
+
+- MLLM 的回复应该直观且易于评估
+
+---
+
+# MME
+
+<img src="/images/MME.png" width=85%>
+
+- 同一张图出两道题，groud-truth 分别为 Y N，都对才算对 （防猜）
+
+
+---
+
+# MME
+Data
+
+- Perception
+  - Coarse-Grained Recognition. (e.g. count, color, position)
+  - Fine-Grained Recognition:  recognizing movie posters, celebrities, scenes, landmarks, and artworks
+  - OCR
+- Cognition
+  - Commensense: basic knowledge in daily life (**zero-shot**)
+  - Calculation: 读图中公式（较简单的）
+  - 翻译写文本
+  - 根据图片生成代码 / debug
+
+---
+
+# MME-RealWorld
+Could Your Multimodal LLM Challenge High-Resolution Real-World Scenarios that are Difficult for Humans?
+
+<div class="grid grid-cols-[25%_75%] gap-4">
+<div>
+
+MME 难度不够用了
+
+- 全手工
+- high res
+- contain CN data
+- contain reasoning problem
+  - 理解全图
+  - 看漫画分析人物关系
+
+</div>
+<div>
+
+<img src="/images/MME-realworld.png" width=100%>
+
+</div>
+</div>
+
+---
+
+# Video MME
+900 videos
+
+Question-Answer pair 全是完整看完视频后手动编写并审查过的
+<img src="/images/video_mme_1.png" width="66%">
+
+<img src="/images/video_mme_2.png" width="60%">
+
+---
+
+# Aligning and Prompting Everything All at Once for Universal Visual Perception
+
+<img src="/images/alignningatonce.png" width="70%">
+
+GLIP / Grounding DINO $\to$ word-region alignment
+
+- need BERT
+- 计算量大
+
+---
+
+# Aligning and Prompting Everything All at Once for ...
+
+## Description Prompting at Scale
+
+- **Independent Prompt** 分开 prompt（忽略上下文关系）$\to$ Llama $\to$ prompt embedding
+
+- **Sentence-level Embeddings** 
+
+  word Level embedding $\to$ sentence level
+
+  $\overline{P_{n,d}}=\frac 1 l \sum^{l}_{j=0}P_{n,j,d}$
+
+  实验证明性能不会发生太大变化 极大减少复杂度
+
+---
+
+# Aligning and Prompting Everything All at Once for ...
+
+## Description Prompting at Scale
+
+- **Gated Cross-modality Interaction** 在 GLIP 基础上：
+
+  - 处理单个词汇：传入全 0 向量 $\overline{P_{zero}}$，不融合，只激发模型微调视觉特征($V_{voc}$) 保留语言特征($P_{voc}$)
+  - 处理句子：正常融合（注入 $P_{set}$ 到 $V_{set}$.）
+
+- **Region-sentence Alignment**
+
+  - Object Embedings $\hat{O}$: Score $S=\hat{O} \cdot (\bar{P}_{voc}, \hat{P}_{set})$.
+  - 为弥补 Sentence-level embedding 的缺陷加入了不相关的 prompt 作为negative
+
+---
+
+# Aligning and Prompting Everything All at Once for ...
+
+## Thing-stuff-equalizing Alignment
+
+- Things : 可以被识别的物体（例如猫狗）
+- Stuff : 无法被识别定型的（如天空草地）
+
+将 stuff 当作 things 处理
+
+- Train ：将大块的 stuff mask 切割（connected-component labeling）成小块, 当作 thing 训练
+- Inference :  将被识别为相同类别的东西合并：
+  $$\hat{M}_{c,h,w} =\sum_{i=1}^q S_{i,c}M_{i,h,w} $$
+
+---
+
+# Aligning and Prompting Everything All at Once for ...
+
+## Single State Train
+
+$$\mathcal{L} = \underbrace{\mathcal{L}_{\text{class}} + \mathcal{L}_{\text{bbox}} + \mathcal{L}_{\text{giou}}}_{\text{encoder and decoder}} + \underbrace{\mathcal{L}_{\text{mask}} + \mathcal{L}_{\text{dice}}}_{\text{last layer of decoder}}$$
+
+**Train multi-data at once :**
+
+I : an image,
+
+T : a phrase that describes an instance in $I$
+
+B : the corresponding bounding box.
+
+
+Vallina: $\{I,T,B\}$
+
+Now: $\{I,(T_1,B_1),(T_2,B_2),...,(T_n,B_n)\}$
+
+---
+
+# Thyme
