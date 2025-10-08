@@ -309,4 +309,469 @@ Now: $\{I,(T_1,B_1),(T_2,B_2),...,(T_n,B_n)\}$
 
 ---
 
+# Thyme: Think Beyond Images
+
+## Pipeline
+
+```mermaid
+graph LR
+res(return results to model)
+input --> judge
+judge --need 
+code 
+generation--> code(generate code)
+judge --don't need --> ans(return answer)
+code -- format correction 
+handle input and output errors
+ --> sandbox -- execute codes -->
+res
+
+```
+
+<img src="/images/thyme.png" width=80%>
+
+---
+
 # Thyme
+
+## Sandbox
+
+- **security and robustness** : 
+  - Skan dangerous operations: `remove, unlink, move, rename`
+  - Maximum execution time 10s
+- **reduce code generation burden**
+  - `autopep8` formatting, indentation alignment.
+  - `ast`, fix bbox boundries
+  - preset local variables, e.g. `image_path`
+  - Multicode segments:
+    - record all variables throughout the model’s code execution process and incorporate historical context in multi-round sandbox invocations.
+
+---
+
+# Thyme
+
+## Train Data
+
+- 无需操作即可回答
+- 需要进行图像操作的
+- 需要多轮 reasoning 和图像操作的
+
+- 图像操作
+  - Cropping (high res，问题所需占比不超过5%), rotation (30-335) , low contrast, computational reasoning(math centric)(让code不只用来处理图片)
+  
+  - **Multi-round conversational datasets** (Further enhancement & Error correction)
+
+---
+
+# Thyme
+
+## Train Data
+
+construct:
+
+<img src="/images/thymedata.png" width=60%>
+
+example:
+
+<img src="/images/thyme-exp.png" width=60%>
+
+
+---
+transition: fade-out
+---
+
+# Thyme
+
+## Training
+
+Each training sample:
+
+$X=\{(I,Q);([T_0,C_0,S_0],...,[T_t,a])\}$
+
+Image I, Question Q, thinking process T, optional Code C and Result S, final answer a.
+
+## Issue
+
+1. Two rounds dialogue 会训练出故意在第一轮做错，第二轮纠正的模型
+
+2. Math Data 少，模型几乎没有提升
+
+---
+
+# Thyme
+
+## Issue
+
+1. Two rounds dialogue 会训练出故意在第一轮做错，第二轮纠正的模型
+
+2. Math Data 少，模型几乎没有提升
+
+## Solve
+
+1. 多轮对话: mask 中间所有轮
+2. mask $S_{i=1...t}$，防止偷学程序结果
+3. Math data: 其他数据训练完后用于微调，低 lr，不 mask 
+
+---
+
+# Thyme RL
+auto GRPO
+
+GRPO, but 
+
+1.
+$$
+\text{temperature} = \begin{cases}
+
+0.0 \quad \text{generating } \textbf{code} \\
+1.0 \quad \text{generating } \textbf{text}
+
+\end{cases}
+
+$$
+
+否则因为 code 比较难，模型会逐渐拒绝生成 code
+
+2. Sample 的时候设置长度上限
+
+3. 如果同一短语重复多次 (> 50% outputlength) 提前结束
+
+---
+
+# Freeze-Omni: A Smart and Low Latency Speech-to-speech Dialogue Model with Frozen LLM
+
+```mermaid
+graph TD
+
+ddle(dialogue data 少)
+FB(finetune 后模型变笨)
+ddle --> FB
+
+FB --necesaary--> asd[Freeze LLM]
+
+```
+
+---
+
+# Freeze-Omni
+
+<div class="grid grid-cols-[55%_45%] gap-1">
+
+  <div>
+    <img src="/images/freezeomni.png" width=100%>
+  </div>
+
+  <div>
+
+```mermaid
+graph LR
+input(input-speech
+features)
+highd(high-dimensional
+representation)
+emd(embedding
+ space of LLM)
+
+input --Chunk-wise
+ Speech 
+ Encoder--> highd
+highd --Adapter--> emd
+```
+
+  - Speech Encoder : several down-sampling convolutional layers.+ several Transformer
+
+  - Adapter: only several down-sampling convolutional layers
+
+  - Down-sampling: 降低帧率 增加LLM速度来减少延迟
+  
+  </div>
+
+</div>
+
+---
+
+# Training
+Freeze-Omni
+
+**Speech-Encoder**
+
+(a)
+```mermaid
+graph LR
+
+wav --> spenc[🔥Speech Encoder]
+spenc --> Transcript
+
+```
+
+(b)
+```mermaid
+graph LR
+
+wav --> spenc[🔥Speech Encoder]
+spenc --> adap[🔥Adapter]
+adap --> llm[❄️LLM]
+specs[🔥Special Tokens ▪️▪️..▪️] --> llm
+llm --> Transcript
+
+```
+
+---
+
+# Training **Speech-Encoder**
+( c )
+
+```mermaid
+graph LR
+
+prop1(🔥Prompt Embedding)
+q1(wav Q1) --> spec1(❄️Speech Encoder)
+spec1 --> adap1(❄️Adapter)
+adap1 --> llm(❄️LLM)
+prop1 --> llm
+llm --> t1(Text of A1)
+
+prop2(🔥Prompt Embedding)
+q2(wav Q2) --> spec2(❄️Speech Encoder)
+spec2 --> adap2(❄️Adapter)
+adap2 --> llm
+prop2 --> llm
+llm --> t2(Text of A2)
+```
+
+---
+
+# Training
+
+**Speech Decoder**
+
+<div class="grid grid-cols-[60%_40%] gap-1">
+
+<div>
+  <img src="/images/speechdec.png" width=100%>
+</div>
+
+<div>
+(a) single-codebook based codec model using only speech data
+
+(b) NAR 和 AR 用相同的参数
+
+\(c) LLM 生成 token 的风格和数据中的风格不同，第三阶段用于将 decoder 和 llm 更好的对齐
+</div>
+
+</div>
+
+---
+
+# R1-Reward: Training Multimodal Reward Model Through Stable Reinforcement Learning 
+
+将 RL 引入 Reward Models
+
+**PPO / reinforce++ 在 reward model training 中的劣势**
+
+- $\pi_\theta$ 和 $\pi_{\theta_{old}}$ 相差过大时 exp 会爆，advantage < 0 的时候会导致loss不稳定
+- 因为输出只有 2 选项，容易被学会。此时可能出现例如255个1和1个0，normalize后的advantage会相当大影响稳定性
+
+---
+
+# R1-Reward
+
+## Pre-Clip
+`exp`之前就 clip
+
+**PPO**
+
+$$
+\text{clip}(\frac{\pi_\theta(a_t | s_t)}{\pi_{\theta_{old}}(a_t|s_t)},1- \epsilon, 1+\epsilon)
+$$
+
+```python
+ratio = (log_probs - old_log_probs).exp() 
+```
+
+**THIS**
+
+```python
+log_diff = log_probs - old_log_probs
+clip(log_diff, epsilon, -epsilon)
+ratio=log_diff.exp()
+```
+
+---
+
+# R1-Reward
+
+## Advantage Filter
+
+移除掉偏离超过 $3\sigma$ 的值
+
+$$
+A_{\text{std}}=\frac{A-\mu_A}{\sigma_A+\epsilon}
+$$
+
+$$
+\hat{A}=
+\begin{cases}
+A_{\text{std}} \quad \text{if } |A_{\text{std}}| \le 3 \\
+0 \quad \text{else}
+\end{cases}
+$$
+
+---
+
+# R1-Reward
+
+## Reward
+
+$$
+\text{reward} = \text{result reward} \times (1+0.5 \times \textbf{Consistency Reward})+0.5 \times \text{formatting reward}
+$$
+
+**format**: 限制为 `<think>..</think><answer></answer>`
+
+**Consistency**: 
+
+模型有时给出 `<think>...response 2 is better</think><answer>1</answer>`
+
+- result reward 只和答案有关
+- reward: 使用 Qwen2.5-VL-7B-Instruct 检查 think 和 answer 是否一致
+
+---
+
+# Zooming from Context to Cue: Hierarchical Preference Optimization for Multi-Image MLLMs 
+ \ 
+
+尝试解决 MLLM 在多图片下性能降低的问题 $\to$ cross modal alignment 做得不好
+
+- 使用实验证明了根本瓶颈是 **上下文描述能力缺陷**
+  1. 内部图像理解能力不足
+  2. 实验：
+    - baseline 直接回答
+    - 对每个图像生成准确描述后回答 
+    - 对每个图像生成随机(bad)描述后回答。 
+    
+    Baseline 随长度增加掉很快，几乎与 bad 一样
+
+---
+
+# Zooming from Context to Cue: Hierarchical ...
+
+## CcDPO
+
+<img src="/images/zomming_overv.png" width=75%>
+
+- Context-Level Optimization
+  - Ensuring comprehensive integration of all relevant visual information across image sequences
+- Needle-Level Optimization
+
+---
+
+# CcDPO
+
+## Context-Level Optimization
+
+$y_w=$`[For Image 1:<caption 1>, For Image 2:<caption 2>,..., For Image n:<caption n>]`
+
+$y_l$:
+
+**Sequence Truncation** (simulates context omission) 移除部分或全部
+  - `[For Image 1:<caption 1>,..., For Image n:<caption n>]`
+  - `[For Image 1:<short caption 1>, For Image 2:<short caption 2>,..., For Image n:<short caption n>]`
+
+**Content Swapping** (simulates conflation)
+`[For Image 1:<caption 2>, For Image 2:<caption 1>, ...]`
+
+$$
+\mathcal{L}_{\text{DPO}_t} = 
+- \log \sigma \left(
+    \beta \log \frac{\pi_\theta(y_w \mid v_w, x)}{\pi_{\text{ref}}(y_w \mid v_w, x)}
+    - \beta \log \frac{\pi_\theta(y_l \mid v_w, x)}{\pi_{\text{ref}}(y_l \mid v_w, x)}
+\right),
+\quad
+y_l \in \{ y_l^{\text{trunc}},\, y_l^{\text{short}},\, y_l^{\text{swap}} \}
+$$
+
+---
+
+# CcDPO
+
+## Needle-Level DPO
+
+Target region $r$, yielding $v_r$. $r'$ not overlapping with $r$
+
+$y_r=$ `[For the marked area of Image 1: <caption r_1>, ...]`
+
+$y_l=$ `[For the marked area of Image 1: <caption r_1'>, ...]`
+
+<div v-click="1">
+rewarding focus on relevant details and penalizing attention to misleading content
+</div>
+
+---
+
+# CcDPO
+
+## Needle-Level DPO
+
+**rewarding focus on relevant details and penalizing attention to misleading content**
+
+1) _Focusing on Relevant Visuals_: rewards details, countering neglect visual content
+$$
+\mathcal{L}_{\text{Focus}}(v_w, y_w) = 
+- \log \sigma \left(
+    \beta_1 \log \frac{\pi_\theta(y_w \mid v_w, x)}{\pi_{\text{ref}}(y_w \mid v_w, x)}
+    - \beta_1 \log \frac{\pi_\theta(y_w \mid x)}{\pi_{\text{ref}}(y_w \mid x)}
+\right)
+$$
+2) _Rejecting Contradictory Visuals_: penalizes assigning high probability to $y_w$ when using contradictory image $x_l$
+$$
+\mathcal{L}_{\text{Reject}}(v_l, y_w) = 
+- \log \sigma \left(
+    \beta_2 \log \frac{\pi_\theta(y_w \mid x)}{\pi_{\text{ref}}(y_w \mid x)}
+    - \beta_2 \log \frac{\pi_\theta(y_w \mid v_l, x)}{\pi_{\text{ref}}(y_w \mid v_l, x)}
+\right)
+$$
+Combined DPO loss:  
+$$
+\mathcal{L}_{\text{DPO}_v}(v_w, y_w, v_l)
+= \mathcal{L}_{\text{Focus}}(v_w, y_w)
++ \mathcal{L}_{\text{Reject}}(v_l, y_w)
+$$
+
+---
+
+# Cantor : Inspiring Multimodal Chain-of-Thought of MLLM
+融合视觉上下文获取与逻辑推理
+
+<img src="/images/cantor.png" width=80%>
+
+使用一个单一 MLLM 配合很多个 prompt 作为每一个模块
+
+---
+
+# Woodpecker: Hallucination Correction for Multimodal Large Language Models (2023)
+
+<img src="/images/woodpecker.png" width="60%">
+
+<div class="grid grid-cols-[50%_50%] gap-4">
+
+<div>
+
+**_Key Concept Extraction + Question Formulation_**:
+Prompt LLM 
+
+**_Visual Knowledge Validation_**:
+
+- Object level question :  openset object detector
+- Attribute level question: a pre-trained VQA model
+</div>
+<div>
+
+**_Visual Claim generation_**:
+a QA-toClaim model
+
+**_Hallucination Correction_**:
+Prompt LLM
+</div>
+
+</div>
