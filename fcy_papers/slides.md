@@ -775,3 +775,82 @@ Prompt LLM
 </div>
 
 </div>
+
+---
+
+# VITA-Audio
+Fast interleaved Cross-Modal Token Generation for Efficient Large Speech-Language Model
+
+1. Audio - text 的 attention 高度相关。实验：只要给了 h，即使 mask 其他 token 也能正常生成该 token 的 audio
+
+<img src="/images/vitaaudio.png" width="57%">
+
+Forward Pass: 交替生成文本/语音 token
+
+---
+
+# VITA-Audio
+
+## MCTP
+
+$$
+p_{t+i}(Y_{t-1},\dots,Y_0)=\tilde{P}[Y_{t+i}|Y_{t-1},\dots,Y_0,h_{t+i-1},o_{t+i-1},\dots,o_t]
+$$
+
+- 用 Transformer 根据 $Y, h, o$ 预测下一 $h, o$
+
+- 10 个 MTCP : 从单个 token $\to$ 10 个 audio-token
+
+```mermaid
+
+graph LR
+
+o(output)
+h(hidden state)
+yy(Y_i 过去状态)
+
+o --> mctp1(MCTP)
+h --> mctp1
+yy --> mctp1
+
+mctp1 --> o2(output)
+mctp1 --> h2(hidden state)
+
+yy --> mctp2(MCTP)
+o2 --> mctp2
+h2 --> mctp2
+
+mctp2 --> o3(output)
+mctp2 --> h3(hidden state)
+
+mctp3(MCTP)
+
+o3 --> mctp3
+h3 --> mctp3
+
+yy --> mctp3
+
+```
+
+---
+
+# VITA-Audio : Train
+
+Pipeline
+
+<img src="/images/vitaaudio-train.png" width="80%">
+
+---
+
+# VITA-Audio
+
+## Inference modes
+
+
+<img src="/images/vitaaudio-modes.png" width="80%">
+
+## Related 
+
+**Qwen-2.5 Omni**: $\quad$ Thinker-Talker:
+
+Talker 获得 thinker 的所有历史，以及当前的 hidden state 来预测下一个 audio。
