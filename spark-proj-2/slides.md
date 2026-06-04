@@ -898,6 +898,7 @@ layout: section
 class: architecture-embed
 ---
 
+<!--
 <div class="live-architecture">
   <div class="live-architecture-bar">
     <span>q2/design/architecture-design</span>
@@ -907,6 +908,7 @@ class: architecture-embed
   </div>
   <iframe src="/architecture-design/index.html" title="舌诊 AI 系统架构设计文档"></iframe>
 </div>
+-->
 
 <!--
 这是AI写的的总体设计文档
