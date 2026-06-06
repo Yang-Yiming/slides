@@ -1,0 +1,9 @@
+{
+  "rewrites": [
+    { "source": "/compare/:path*", "destination": "/compare/:path*" },
+    { "source": "/second-compare/:path*", "destination": "/second-compare/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist"
+}

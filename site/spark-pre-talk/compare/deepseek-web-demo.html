@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPH 2D 流体模拟器 - Dam Break</title>
+    <style>
+        :root {
+            --bg: #0a0a14;
+            --panel-bg: #12122a;
+            --text: #c8d6e5;
+            --accent: #4da6ff;
+            --accent2: #ff6b6b;
+            --slider-track: #1e1e3a;
+            --border: #2a2a4a;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            overflow-y: auto;
+            padding: 20px;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            width: 100%;
+            max-width: 960px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            padding: 12px 20px;
+            background: var(--panel-bg);
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .title-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .title-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #1a6dd4, #4da6ff);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .title {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: 0.02em;
+        }
+        .subtitle {
+            font-size: 0.75em;
+            color: #8899bb;
+            font-weight: 400;
+        }
+
+        .stats {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 8px 14px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .stat-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .stat-dot.fps {
+            background: #4ecb71;
+            box-shadow: 0 0 8px #4ecb7188;
+        }
+        .stat-dot.particles {
+            background: #4da6ff;
+            box-shadow: 0 0 8px #4da6ff88;
+        }
+        .stat-label {
+            font-size: 0.7em;
+            color: #8899bb;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .stat-value {
+            font-size: 1.05em;
+            font-weight: 700;
+            color: #fff;
+            font-variant-numeric: tabular-nums;
+            font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+            min-width: 36px;
+            text-align: right;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: var(--shadow), 0 0 60px rgba(30, 100, 200, 0.15);
+            border: 2px solid var(--border);
+            cursor: crosshair;
+            background: #060612;
+            line-height: 0;
+            width: 100%;
+            aspect-ratio: 900/600;
+            max-height: 70vh;
+        }
+        .canvas-wrapper canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .canvas-hint {
+            position: absolute;
+            bottom: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            pointer-events: none;
+            font-size: 0.78em;
+            color: rgba(255, 255, 255, 0.45);
+            letter-spacing: 0.04em;
+            transition: opacity 0.6s;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 5px 14px;
+            border-radius: 12px;
+            white-space: nowrap;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            width: 100%;
+            padding: 16px 20px;
+            background: var(--panel-bg);
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            align-items: center;
+            justify-content: center;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 100px;
+            flex: 1;
+            max-width: 200px;
+        }
+        .control-group label {
+            font-size: 0.7em;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #8899bb;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .control-group label .icon {
+            font-size: 1.1em;
+        }
+        .control-group input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--slider-track);
+            outline: none;
+            cursor: pointer;
+        }
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #fff;
+            border: 2px solid var(--accent);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            transition: transform 0.1s;
+        }
+        .control-group input[type="range"]::-webkit-slider-thumb:active {
+            transform: scale(1.15);
+        }
+        .control-value {
+            font-size: 0.75em;
+            color: #aabbcc;
+            text-align: right;
+            font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+            font-weight: 600;
+        }
+        .btn {
+            padding: 10px 20px;
+            border-radius: 22px;
+            border: 1px solid var(--border);
+            background: var(--panel-bg);
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.85em;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            transition: all 0.2s;
+            white-space: nowrap;
+            font-family: inherit;
+        }
+        .btn:hover {
+            background: #1e1e40;
+            border-color: #4da6ff66;
+            box-shadow: 0 4px 16px rgba(77, 166, 255, 0.2);
+        }
+        .btn:active {
+            transform: scale(0.96);
+            transition: transform 0.05s;
+        }
+        .btn.accent {
+            background: #1a5fcc;
+            border-color: #4da6ff;
+            font-weight: 700;
+        }
+        .btn.accent:hover {
+            background: #1e6de0;
+            box-shadow: 0 6px 20px rgba(77, 166, 255, 0.35);
+        }
+        .key-hint {
+            font-size: 0.7em;
+            color: #667;
+            background: rgba(255, 255, 255, 0.04);
+            padding: 2px 8px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            letter-spacing: 0.04em;
+        }
+
+        @media (max-width: 700px) {
+            .controls {
+                gap: 8px;
+                padding: 12px;
+            }
+            .control-group {
+                min-width: 70px;
+                flex: 1 1 40%;
+                max-width: none;
+            }
+            .header {
+                padding: 10px 14px;
+                gap: 8px;
+            }
+            .stats {
+                gap: 8px;
+            }
+            .stat-item {
+                padding: 5px 10px;
+                gap: 4px;
+            }
+            .title {
+                font-size: 1.1em;
+            }
+            .canvas-wrapper {
+                aspect-ratio: 4/3;
+                max-height: 50vh;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 头部信息栏 -->
+        <div class="header">
+            <div class="title-area">
+                <div class="title-icon">💧</div>
+                <div>
+                    <div class="title">SPH 流体模拟器</div>
+                    <div class="subtitle">Smoothed Particle Hydrodynamics · Dam Break</div>
+                </div>
+            </div>
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-dot fps"></div>
+                    <span class="stat-label">FPS</span>
+                    <span class="stat-value" id="fpsDisplay">60</span>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-dot particles"></div>
+                    <span class="stat-label">粒子数</span>
+                    <span class="stat-value" id="particleCount">500</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Canvas 渲染区 -->
+        <div class="canvas-wrapper" id="canvasWrapper">
+            <canvas id="fluidCanvas"></canvas>
+            <div class="canvas-hint" id="canvasHint">🖱 拖拽扰动流体 &nbsp;|&nbsp; <span class="key-hint">空格</span> 重置模拟</div>
+        </div>
+
+        <!-- 控制面板 -->
+        <div class="controls" id="controls">
+            <div class="control-group">
+                <label><span class="icon">🔢</span> 粒子数</label>
+                <input type="range" id="particleSlider" min="80" max="1200" value="500" step="10">
+                <span class="control-value" id="particleValue">500</span>
+            </div>
+            <div class="control-group">
+                <label><span class="icon">🫗</span> 粘度</label>
+                <input type="range" id="viscositySlider" min="0" max="200" value="30" step="1">
+                <span class="control-value" id="viscosityValue">0.030</span>
+            </div>
+            <div class="control-group">
+                <label><span class="icon">⬇</span> 重力</label>
+                <input type="range" id="gravitySlider" min="50" max="2000" value="800" step="10">
+                <span class="control-value" id="gravityValue">800</span>
+            </div>
+            <button class="btn accent" id="resetBtn" title="重置模拟 (空格键)">
+                🔄 重置模拟
+            </button>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // ==================== DOM 元素 ====================
+            const canvas = document.getElementById('fluidCanvas');
+            const ctx = canvas.getContext('2d');
+            const canvasWrapper = document.getElementById('canvasWrapper');
+            const canvasHint = document.getElementById('canvasHint');
+            const fpsDisplay = document.getElementById('fpsDisplay');
+            const particleCountDisplay = document.getElementById('particleCount');
+            const particleSlider = document.getElementById('particleSlider');
+            const viscositySlider = document.getElementById('viscositySlider');
+            const gravitySlider = document.getElementById('gravitySlider');
+            const particleValueEl = document.getElementById('particleValue');
+            const viscosityValueEl = document.getElementById('viscosityValue');
+            const gravityValueEl = document.getElementById('gravityValue');
+            const resetBtn = document.getElementById('resetBtn');
+
+            // ==================== 常量与配置 ====================
+            const CONTAINER_MARGIN = 48; // 容器壁距离canvas边缘
+            const KERNEL_H = 22; // 光滑长度（核函数支持半径）
+            const KERNEL_H_SQ = KERNEL_H * KERNEL_H;
+            const PRESSURE_K = 1800; // 压力刚度常数
+            const REST_DENSITY = 0.0085; // 目标静止密度（将在初始化时微调）
+            const SUB_STEPS = 3; // 每帧物理子步数
+            const BOUNDARY_DAMPING = 0.55; // 边界碰撞速度阻尼
+            const MOUSE_FORCE_STRENGTH = 3500; // 鼠标扰动强度
+            const MOUSE_RADIUS = 55; // 鼠标影响半径
+            const MOUSE_RADIUS_SQ = MOUSE_RADIUS * MOUSE_RADIUS;
+
+            // ==================== 状态变量 ====================
+            let particles = [];
+            let targetParticleCount = 500;
+            let viscosityCoeff = 0.03;
+            let gravityStrength = 800;
+            let actualRestDensity = REST_DENSITY;
+            let containerLeft, containerRight, containerTop, containerBottom;
+            let containerWidth, containerHeight;
+            let spatialHash = new Map();
+            let cellSize = KERNEL_H;
+            let mouseX = -1000;
+            let mouseY = -1000;
+            let mouseDown = false;
+            let mousePrevX = -1000;
+            let mousePrevY = -1000;
+            let mouseDeltaX = 0;
+            let mouseDeltaY = 0;
+            let fpsHistory = [];
+            let lastFrameTime = performance.now();
+            let simulationTime = 0;
+            let frameCount = 0;
+            let animFrameId = null;
+
+            // ==================== Canvas 尺寸管理 ====================
+            function resizeCanvas() {
+                const rect = canvasWrapper.getBoundingClientRect();
+                const dpr = Math.min(window.devicePixelRatio || 1, 2); // 限制像素比以保证性能
+                const displayWidth = rect.width;
+                const displayHeight = rect.height;
+                canvas.width = displayWidth * dpr;
+                canvas.height = displayHeight * dpr;
+                canvas.style.width = displayWidth + 'px';
+                canvas.style.height = displayHeight + 'px';
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.scale(dpr, dpr);
+
+                // 更新容器边界（在显示坐标空间中）
+                containerLeft = CONTAINER_MARGIN;
+                containerRight = displayWidth - CONTAINER_MARGIN;
+                containerTop = CONTAINER_MARGIN;
+                containerBottom = displayHeight - CONTAINER_MARGIN;
+                containerWidth = containerRight - containerLeft;
+                containerHeight = containerBottom - containerTop;
+            }
+
+            // ==================== 空间哈希网格 ====================
+            function clearSpatialHash() {
+                spatialHash.clear();
+            }
+
+            function hashKey(cx, cy) {
+                return cx + ',' + cy;
+            }
+
+            function getCellCoords(px, py) {
+                return [Math.floor(px / cellSize), Math.floor(py / cellSize)];
+            }
+
+            function insertToHash(particle) {
+                const [cx, cy] = getCellCoords(particle.x, particle.y);
+                const key = hashKey(cx, cy);
+                if (!spatialHash.has(key)) {
+                    spatialHash.set(key, []);
+                }
+                spatialHash.get(key).push(particle);
+            }
+
+            function buildSpatialHash() {
+                clearSpatialHash();
+                for (let i = 0; i < particles.length; i++) {
+                    insertToHash(particles[i]);
+                }
+            }
+
+            function getNeighbors(particle) {
+                const neighbors = [];
+                const [cx, cy] = getCellCoords(particle.x, particle.y);
+                for (let dx = -1; dx <= 1; dx++) {
+                    for (let dy = -1; dy <= 1; dy++) {
+                        const key = hashKey(cx + dx, cy + dy);
+                        const cell = spatialHash.get(key);
+                        if (cell) {
+                            for (let i = 0; i < cell.length; i++) {
+                                const other = cell[i];
+                                if (other === particle) continue;
+                                const dx2 = particle.x - other.x;
+                                const dy2 = particle.y - other.y;
+                                const distSq = dx2 * dx2 + dy2 * dy2;
+                                if (distSq < KERNEL_H_SQ && distSq > 0.00001) {
+                                    neighbors.push({ particle: other, distSq, dx: dx2, dy: dy2, dist: Math.sqrt(distSq) });
+                                }
+                            }
+                        }
+                    }
+                }
+                return neighbors;
+            }
+
+            // ==================== SPH 核函数 ====================
+            // Poly6 核（用于密度计算）
+            function poly6Kernel(r, h) {
+                if (r >= h) return 0;
+                const h2 = h * h;
+                const diff = h2 - r * r;
+                return (4.0 / (Math.PI * Math.pow(h, 8))) * diff * diff * diff;
+            }
+
+            // Spiky 核梯度（用于压力力）- 返回标量因子，方向由距离向量给出
+            function spikyGradientFactor(r, h) {
+                if (r >= h || r < 0.0001) return 0;
+                const diff = h - r;
+                return (-30.0 / (Math.PI * Math.pow(h, 5))) * diff * diff;
+            }
+
+            // 粘度核拉普拉斯（用于粘度力）
+            function viscosityLaplacian(r, h) {
+                if (r >= h) return 0;
+                const diff = h - r;
+                return (40.0 / (Math.PI * Math.pow(h, 5))) * diff;
+            }
+
+            // ==================== 物理引擎 ====================
+            function createParticle(x, y) {
+                return {
+                    x: x,
+                    y: y,
+                    vx: 0,
+                    vy: 0,
+                    density: 0,
+                    pressure: 0,
+                    fx: 0,
+                    fy: 0,
+                };
+            }
+
+            function initializeDamBreak(count) {
+                particles = [];
+                // 水柱初始区域：容器左侧约 35% 宽度，高度约 75%
+                const damWidth = containerWidth * 0.32;
+                const damHeight = containerHeight * 0.72;
+                const damLeft = containerLeft + containerWidth * 0.04;
+                const damTop = containerTop + containerHeight * 0.06;
+                const damRight = damLeft + damWidth;
+                const damBottom = damTop + damHeight;
+
+                const area = damWidth * damHeight;
+                // 交错排列（六角形堆积近似）
+                const spacing = Math.sqrt(area / (count * 0.866)); // 0.866 = √3/2 六角形堆积因子
+                const rowSpacing = spacing * 0.8660254; // √3/2
+                const cols = Math.floor(damWidth / spacing);
+                const rows = Math.floor(damHeight / rowSpacing);
+
+                let actualCount = 0;
+                const tempParticles = [];
+                for (let row = 0; row < rows; row++) {
+                    const offsetX = (row % 2 === 1) ? spacing * 0.5 : 0;
+                    const y = damTop + row * rowSpacing + rowSpacing * 0.5;
+                    for (let col = 0; col < cols; col++) {
+                        const x = damLeft + offsetX + col * spacing + spacing * 0.5;
+                        if (x + spacing * 0.4 < damRight && y + rowSpacing * 0.4 < damBottom &&
+                            x - spacing * 0.4 > damLeft && y - rowSpacing * 0.4 > damTop) {
+                            tempParticles.push(createParticle(x, y));
+                            actualCount++;
+                            if (actualCount >= count) break;
+                        }
+                    }
+                    if (actualCount >= count) break;
+                }
+
+                particles = tempParticles;
+                targetParticleCount = particles.length;
+                particleSlider.value = targetParticleCount;
+                particleValueEl.textContent = targetParticleCount;
+                particleCountDisplay.textContent = targetParticleCount;
+
+                // 计算初始目标密度
+                calibrateRestDensity();
+            }
+
+            function calibrateRestDensity() {
+                if (particles.length === 0) {
+                    actualRestDensity = REST_DENSITY;
+                    return;
+                }
+                buildSpatialHash();
+                let totalDensity = 0;
+                for (let i = 0; i < particles.length; i++) {
+                    const p = particles[i];
+                    let density = poly6Kernel(0, KERNEL_H); // 自身贡献
+                    const neighbors = getNeighbors(p);
+                    for (const nb of neighbors) {
+                        density += poly6Kernel(nb.dist, KERNEL_H);
+                    }
+                    p.density = density;
+                    totalDensity += density;
+                }
+                actualRestDensity = totalDensity / particles.length;
+                // 确保不低于合理值
+                if (actualRestDensity < 0.001) actualRestDensity = REST_DENSITY;
+            }
+
+            function computeDensitiesAndPressures() {
+                for (let i = 0; i < particles.length; i++) {
+                    const p = particles[i];
+                    let density = poly6Kernel(0, KERNEL_H); // 自身贡献
+                    const neighbors = getNeighbors(p);
+                    for (const nb of neighbors) {
+                        density += poly6Kernel(nb.dist, KERNEL_H);
+                    }
+                    p.density = Math.max(density, actualRestDensity * 0.5);
+                    // 状态方程：P = k * (ρ - ρ₀)
+                    const densityDiff = p.density - actualRestDensity;
+                    p.pressure = PRESSURE_K * Math.max(densityDiff, 0);
+                }
+            }
+
+            function computeForces() {
+                // 重置力
+                for (let i = 0; i < particles.length; i++) {
+                    particles[i].fx = 0;
+                    particles[i].fy = 0;
+                }
+
+                // 压力力和粘度力
+                for (let i = 0; i < particles.length; i++) {
+                    const pi = particles[i];
+                    const neighbors = getNeighbors(pi);
+                    for (const nb of neighbors) {
+                        const pj = nb.particle;
+                        const r = nb.dist;
+                        if (r < 0.0001) continue;
+
+                        const dx = nb.dx;
+                        const dy = nb.dy;
+                        const invR = 1.0 / r;
+                        const nx = dx * invR;
+                        const ny = dy * invR;
+
+                        // 压力力（对称形式）
+                        const pressureTerm = (pi.pressure / (pi.density * pi.density) +
+                            pj.pressure / (pj.density * pj.density));
+                        const spikyGrad = spikyGradientFactor(r, KERNEL_H);
+                        const pressureForceMag = -pressureTerm * spikyGrad;
+
+                        pi.fx += pressureForceMag * nx;
+                        pi.fy += pressureForceMag * ny;
+                        pj.fx -= pressureForceMag * nx;
+                        pj.fy -= pressureForceMag * ny;
+
+                        // 粘度力
+                        const vxDiff = pj.vx - pi.vx;
+                        const vyDiff = pj.vy - pi.vy;
+                        const viscLap = viscosityLaplacian(r, KERNEL_H);
+                        const viscFactor = viscosityCoeff * viscLap / pj.density;
+
+                        pi.fx += viscFactor * vxDiff;
+                        pi.fy += viscFactor * vyDiff;
+                        pj.fx -= viscFactor * vxDiff;
+                        pj.fy -= viscFactor * vyDiff;
+                    }
+                }
+
+                // 重力
+                for (let i = 0; i < particles.length; i++) {
+                    particles[i].fy += gravityStrength;
+                }
+
+                // 鼠标扰动
+                if (mouseDown) {
+                    const mx = mouseX;
+                    const my = mouseY;
+                    for (let i = 0; i < particles.length; i++) {
+                        const p = particles[i];
+                        const dx = p.x - mx;
+                        const dy = p.y - my;
+                        const distSq = dx * dx + dy * dy;
+                        if (distSq < MOUSE_RADIUS_SQ && distSq > 0.01) {
+                            const dist = Math.sqrt(distSq);
+                            const invDist = 1.0 / dist;
+                            const nx = dx * invDist;
+                            const ny = dy * invDist;
+                            // 力的大小随距离衰减（使用平滑衰减）
+                            const falloff = 1.0 - dist / MOUSE_RADIUS;
+                            const falloffSmooth = falloff * falloff * (3 - 2 * falloff); // smoothstep
+                            let forceMag = MOUSE_FORCE_STRENGTH * falloffSmooth;
+                            // 添加鼠标移动方向分量
+                            const moveAlign = (nx * mouseDeltaX + ny * mouseDeltaY) * 0.3;
+                            forceMag += Math.abs(moveAlign) * MOUSE_FORCE_STRENGTH * 0.5 * falloffSmooth;
+                            p.fx += forceMag * nx;
+                            p.fy += forceMag * ny;
+                        }
+                    }
+                }
+            }
+
+            function integrate(dt) {
+                for (let i = 0; i < particles.length; i++) {
+                    const p = particles[i];
+                    // 半隐式Euler（先更新速度，再更新位置）
+                    p.vx += p.fx * dt;
+                    p.vy += p.fy * dt;
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+                }
+            }
+
+            function enforceBoundaries() {
+                for (let i = 0; i < particles.length; i++) {
+                    const p = particles[i];
+                    let bounced = false;
+
+                    if (p.x < containerLeft) {
+                        p.x = containerLeft;
+                        p.vx = Math.abs(p.vx) * BOUNDARY_DAMPING;
+                        bounced = true;
+                    } else if (p.x > containerRight) {
+                        p.x = containerRight;
+                        p.vx = -Math.abs(p.vx) * BOUNDARY_DAMPING;
+                        bounced = true;
+                    }
+
+                    if (p.y < containerTop) {
+                        p.y = containerTop;
+                        p.vy = Math.abs(p.vy) * BOUNDARY_DAMPING;
+                        bounced = true;
+                    } else if (p.y > containerBottom) {
+                        p.y = containerBottom;
+                        p.vy = -Math.abs(p.vy) * BOUNDARY_DAMPING;
+                        bounced = true;
+                    }
+
+                    // 如果粒子反弹，略微减小速度以防止穿透
+                    if (bounced) {
+                        p.vx *= 0.95;
+                        p.vy *= 0.95;
+                    }
+
+                    // 速度限制（防止数值爆炸）
+                    const speedSq = p.vx * p.vx + p.vy * p.vy;
+                    const maxSpeed = 3000;
+                    if (speedSq > maxSpeed * maxSpeed) {
+                        const invSpeed = maxSpeed / Math.sqrt(speedSq);
+                        p.vx *= invSpeed;
+                        p.vy *= invSpeed;
+                    }
+                }
+            }
+
+            function physicsStep(dt) {
+                buildSpatialHash();
+                computeDensitiesAndPressures();
+                computeForces();
+                integrate(dt);
+                enforceBoundaries();
+            }
+
+            // ==================== 渲染器 ====================
+            function getParticleColor(speed, density) {
+                // 基于速度的颜色映射：低速深蓝 → 高速浅蓝/白
+                const maxSpeed = 400;
+                const t = Math.min(speed / maxSpeed, 1.0);
+                // 使用平滑曲线
+                const st = t * t * (3 - 2 * t); // smoothstep
+
+                const r = Math.floor(30 + st * 180);
+                const g = Math.floor(70 + st * 140);
+                const b = Math.floor(160 + st * 70);
+                const alpha = 0.75 + st * 0.2;
+
+                return { r, g, b, alpha };
+            }
+
+            function renderFluid() {
+                const displayWidth = canvas.width / (Math.min(window.devicePixelRatio || 1, 2));
+                const displayHeight = canvas.height / (Math.min(window.devicePixelRatio || 1, 2));
+
+                ctx.clearRect(0, 0, displayWidth, displayHeight);
+
+                // 绘制容器背景
+                ctx.fillStyle = '#08081a';
+                ctx.fillRect(0, 0, displayWidth, displayHeight);
+
+                // 绘制容器壁
+                const wallThickness = 3;
+                ctx.strokeStyle = '#3a4a6a';
+                ctx.lineWidth = wallThickness;
+                ctx.strokeRect(containerLeft, containerTop, containerWidth, containerHeight);
+
+                // 容器壁内部光泽
+                ctx.strokeStyle = '#4a5a7a44';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(containerLeft - 2, containerTop - 2, containerWidth + 4, containerHeight + 4);
+
+                // 容器底部阴影
+                const shadowGrad = ctx.createLinearGradient(containerLeft, containerBottom,
+                    containerLeft, containerBottom + 15);
+                shadowGrad.addColorStop(0, 'rgba(20,40,80,0.4)');
+                shadowGrad.addColorStop(1, 'rgba(20,40,80,0)');
+                ctx.fillStyle = shadowGrad;
+                ctx.fillRect(containerLeft, containerBottom, containerWidth, 15);
+
+                // 绘制粒子
+                const particleRadius = 4.5;
+                for (let i = 0; i < particles.length; i++) {
+                    const p = particles[i];
+                    const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+                    const color = getParticleColor(speed, p.density);
+
+                    // 使用径向渐变使粒子看起来更柔和
+                    const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, particleRadius);
+                    const rgbStr = `${color.r},${color.g},${color.b}`;
+                    grad.addColorStop(0, `rgba(${rgbStr},${color.alpha})`);
+                    grad.addColorStop(0.55, `rgba(${rgbStr},${color.alpha * 0.75})`);
+                    grad.addColorStop(1, `rgba(${rgbStr},0)`);
+
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, particleRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = grad;
+                    ctx.fill();
+                }
+
+                // 绘制鼠标影响范围指示器
+                if (mouseDown) {
+                    const indicatorGrad = ctx.createRadialGradient(mouseX, mouseY, MOUSE_RADIUS * 0.3,
+                        mouseX, mouseY, MOUSE_RADIUS);
+                    indicatorGrad.addColorStop(0, 'rgba(255,255,255,0.15)');
+                    indicatorGrad.addColorStop(0.5, 'rgba(255,255,255,0.05)');
+                    indicatorGrad.addColorStop(1, 'rgba(255,255,255,0)');
+                    ctx.beginPath();
+                    ctx.arc(mouseX, mouseY, MOUSE_RADIUS, 0, Math.PI * 2);
+                    ctx.fillStyle = indicatorGrad;
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([6, 8]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                // 绘制容器标签
+                ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                ctx.font = '11px "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif';
+                ctx.textAlign = 'right';
+                ctx.fillText('容器壁', containerRight - 8, containerTop - 10);
+            }
+
+            // ==================== 主循环 ====================
+            function updateFPS(now) {
+                const delta = now - lastFrameTime;
+                lastFrameTime = now;
+                if (delta > 0) {
+                    const instantFPS = 1000 / delta;
+                    fpsHistory.push(instantFPS);
+                    if (fpsHistory.length > 30) fpsHistory.shift();
+                    const avgFPS = fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length;
+                    fpsDisplay.textContent = Math.round(Math.min(avgFPS, 120));
+                }
+                frameCount++;
+            }
+
+            function mainLoop(timestamp) {
+                if (!animFrameId) return;
+
+                updateFPS(timestamp);
+
+                // 物理子步
+                const dt = (1.0 / 60.0) / SUB_STEPS;
+                for (let s = 0; s < SUB_STEPS; s++) {
+                    physicsStep(dt);
+                }
+                simulationTime += 1.0 / 60.0;
+
+                // 渲染
+                renderFluid();
+
+                // 更新粒子计数显示
+                if (frameCount % 10 === 0) {
+                    particleCountDisplay.textContent = particles.length;
+                }
+
+                // 隐藏提示（首次交互后）
+                if (frameCount > 120 && canvasHint.style.opacity !== '0') {
+                    canvasHint.style.transition = 'opacity 1.5s';
+                    canvasHint.style.opacity = '0';
+                    setTimeout(() => {
+                        if (canvasHint.style.opacity === '0') {
+                            canvasHint.textContent = '';
+                        }
+                    }, 1600);
+                }
+
+                animFrameId = requestAnimationFrame(mainLoop);
+            }
+
+            function startSimulation() {
+                if (animFrameId) return;
+                lastFrameTime = performance.now();
+                fpsHistory = [];
+                frameCount = 0;
+                simulationTime = 0;
+                canvasHint.style.opacity = '1';
+                canvasHint.style.transition = 'opacity 0.3s';
+                canvasHint.textContent = '🖱 拖拽扰动流体  |  空格 重置模拟';
+                animFrameId = requestAnimationFrame(mainLoop);
+            }
+
+            function stopSimulation() {
+                if (animFrameId) {
+                    cancelAnimationFrame(animFrameId);
+                    animFrameId = null;
+                }
+            }
+
+            function resetSimulation() {
+                stopSimulation();
+                resizeCanvas();
+                initializeDamBreak(targetParticleCount);
+                buildSpatialHash();
+                computeDensitiesAndPressures();
+                actualRestDensity = REST_DENSITY;
+                calibrateRestDensity();
+                fpsHistory = [];
+                lastFrameTime = performance.now();
+                frameCount = 0;
+                simulationTime = 0;
+                canvasHint.style.opacity = '1';
+                canvasHint.style.transition = 'opacity 0.3s';
+                canvasHint.textContent = '🖱 拖拽扰动流体  |  空格 重置模拟';
+                renderFluid();
+                startSimulation();
+            }
+
+            // ==================== 事件处理 ====================
+            function getCanvasCoords(e) {
+                const rect = canvas.getBoundingClientRect();
+                const displayWidth = rect.width;
+                const displayHeight = rect.height;
+                const canvasDisplayWidth = canvas.width / (Math.min(window.devicePixelRatio || 1, 2));
+                const canvasDisplayHeight = canvas.height / (Math.min(window.devicePixelRatio || 1, 2));
+                const scaleX = canvasDisplayWidth / displayWidth;
+                const scaleY = canvasDisplayHeight / displayHeight;
+                return {
+                    x: (e.clientX - rect.left) * scaleX,
+                    y: (e.clientY - rect.top) * scaleY,
+                };
+            }
+
+            canvas.addEventListener('mousedown', (e) => {
+                if (e.button === 0) {
+                    mouseDown = true;
+                    const coords = getCanvasCoords(e);
+                    mouseX = coords.x;
+                    mouseY = coords.y;
+                    mousePrevX = mouseX;
+                    mousePrevY = mouseY;
+                    mouseDeltaX = 0;
+                    mouseDeltaY = 0;
+                    canvas.style.cursor = 'grabbing';
+                    e.preventDefault();
+                }
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (mouseDown) {
+                    const coords = getCanvasCoords(e);
+                    mousePrevX = mouseX;
+                    mousePrevY = mouseY;
+                    mouseX = coords.x;
+                    mouseY = coords.y;
+                    mouseDeltaX = mouseX - mousePrevX;
+                    mouseDeltaY = mouseY - mousePrevY;
+                } else {
+                    const coords = getCanvasCoords(e);
+                    mouseX = coords.x;
+                    mouseY = coords.y;
+                    mouseDeltaX = 0;
+                    mouseDeltaY = 0;
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (mouseDown) {
+                    mouseDown = false;
+                    mouseDeltaX = 0;
+                    mouseDeltaY = 0;
+                    canvas.style.cursor = 'crosshair';
+                }
+            });
+
+            canvas.addEventListener('mouseleave', () => {
+                if (mouseDown) {
+                    mouseDown = false;
+                    mouseDeltaX = 0;
+                    mouseDeltaY = 0;
+                    canvas.style.cursor = 'crosshair';
+                }
+            });
+
+            canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+            // 触摸事件（移动端支持）
+            canvas.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    mouseDown = true;
+                    const coords = getCanvasCoords(e.touches[0]);
+                    mouseX = coords.x;
+                    mouseY = coords.y;
+                    mousePrevX = mouseX;
+                    mousePrevY = mouseY;
+                    mouseDeltaX = 0;
+                    mouseDeltaY = 0;
+                    e.preventDefault();
+                }
+            }, { passive: false });
+
+            canvas.addEventListener('touchmove', (e) => {
+                if (mouseDown && e.touches.length === 1) {
+                    const coords = getCanvasCoords(e.touches[0]);
+                    mousePrevX = mouseX;
+                    mousePrevY = mouseY;
+                    mouseX = coords.x;
+                    mouseY = coords.y;
+                    mouseDeltaX = mouseX - mousePrevX;
+                    mouseDeltaY = mouseY - mousePrevY;
+                    e.preventDefault();
+                }
+            }, { passive: false });
+
+            canvas.addEventListener('touchend', () => {
+                mouseDown = false;
+                mouseDeltaX = 0;
+                mouseDeltaY = 0;
+            });
+
+            // 键盘事件
+            window.addEventListener('keydown', (e) => {
+                if (e.code === 'Space') {
+                    e.preventDefault();
+                    resetSimulation();
+                }
+            });
+
+            // 滑块事件
+            particleSlider.addEventListener('input', () => {
+                const val = parseInt(particleSlider.value);
+                particleValueEl.textContent = val;
+            });
+
+            particleSlider.addEventListener('change', () => {
+                const val = parseInt(particleSlider.value);
+                targetParticleCount = val;
+                particleValueEl.textContent = val;
+                resetSimulation();
+            });
+
+            viscositySlider.addEventListener('input', () => {
+                const val = parseInt(viscositySlider.value) / 1000;
+                viscosityCoeff = val;
+                viscosityValueEl.textContent = val.toFixed(3);
+            });
+
+            gravitySlider.addEventListener('input', () => {
+                const val = parseInt(gravitySlider.value);
+                gravityStrength = val;
+                gravityValueEl.textContent = val;
+            });
+
+            resetBtn.addEventListener('click', () => {
+                resetSimulation();
+            });
+
+            // 窗口大小调整
+            let resizeTimeout;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    resizeCanvas();
+                    // 重新校准粒子位置（确保在边界内）
+                    enforceBoundaries();
+                    buildSpatialHash();
+                    computeDensitiesAndPressures();
+                }, 300);
+            });
+
+            // ==================== 初始化 ====================
+            function init() {
+                resizeCanvas();
+                // 设置初始滑块值
+                particleSlider.value = targetParticleCount;
+                particleValueEl.textContent = targetParticleCount;
+                viscositySlider.value = Math.round(viscosityCoeff * 1000);
+                viscosityValueEl.textContent = viscosityCoeff.toFixed(3);
+                gravitySlider.value = gravityStrength;
+                gravityValueEl.textContent = gravityStrength;
+
+                // 初始化粒子
+                initializeDamBreak(targetParticleCount);
+
+                // 渲染初始状态
+                renderFluid();
+
+                // 开始模拟
+                startSimulation();
+            }
+
+            // ==================== 启动 ====================
+            init();
+
+            // ==================== 调试导出（开发用） ====================
+            if (typeof window !== 'undefined') {
+                window.__sphSimulator = {
+                    particles,
+                    resetSimulation,
+                    stopSimulation,
+                    startSimulation,
+                    getParticleCount: () => particles.length,
+                    getFPS: () => fpsDisplay.textContent,
+                    getConfig: () => ({
+                        targetParticleCount,
+                        viscosityCoeff,
+                        gravityStrength,
+                        actualRestDensity,
+                        kernelH: KERNEL_H,
+                        pressureK: PRESSURE_K,
+                        subSteps: SUB_STEPS,
+                    }),
+                };
+            }
+
+            console.log('💧 SPH 2D 流体模拟器已就绪');
+            console.log('   - Dam Break 初始场景');
+            console.log('   - 粒子数:', targetParticleCount);
+            console.log('   - 光滑长度 h:', KERNEL_H);
+            console.log('   - 子步数:', SUB_STEPS);
+            console.log('   🖱 鼠标拖拽扰动 | 空格键重置');
+            console.log('   ℹ️ 可通过 window.__sphSimulator 访问模拟器状态');
+        })();
+    </script>
+</body>
+</html>

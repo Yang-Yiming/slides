@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPH iD Fluid Simulator</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:#0d1117;display:flex;justify-content:center;align-items:center;
+    min-height:100vh;font-family:"Segoe UI",system-ui,sans-serif;
+    flex-direction:column;color:#c9d1d9;user-select:none;-webkit-user-select:none
+  }
+  #container{display:flex;flex-direction:column;gap:14px;align-items:center}
+  canvas{
+    border:2px solid #30363d;border-radius:10px;display:block;cursor:crosshair;
+    max-width:95vw;max-height:75vh
+  }
+  #controls{
+    display:flex;gap:24px;align-items:center;flex-wrap:wrap;justify-content:center;
+    padding:14px 24px;background:#161b22;border-radius:10px;border:1px solid #30363d
+  }
+  .cg{display:flex;flex-direction:column;gap:2px;min-width:105px}
+  .cg label{font-size:12px;color:#8b949e;letter-spacing:.3px}
+  .cg span{color:#58a6ff;font-weight:600;font-variant-numeric:tabular-nums}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:130px;height:6px;
+    background:#30363d;border-radius:3px;outline:none;cursor:pointer
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:16px;height:16px;
+    border-radius:50%;background:#58a6ff;cursor:pointer;border:2px solid #1f6feb
+  }
+  .info{
+    display:flex;gap:28px;font-size:13px;padding:8px 18px;
+    background:#0d1117;border-radius:6px;border:1px solid #30363d
+  }
+  .info strong{color:#58a6ff;font-variant-numeric:tabular-nums}
+  #hint{color:#8b949e;font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<div id="container">
+  <canvas id="canvas"></canvas>
+  <div id="controls">
+    <div class="cg"><label>Particles <span id="pv">400</span></label>
+      <input type="range" id="ps" min="80" max="900" value="400" step="10"></div>
+    <div class="cg"><label>Viscosity <span id="vv">0.20</span></label>
+      <input type="range" id="vs" min="1" max="200" value="20" step="1"></div>
+    <div class="cg"><label>Gravity <span id="gv">15.0</span></label>
+      <input type="range" id="gs" min="2" max="40" value="15" step="0.1"></div>
+    <div class="info">
+      <span>FPS: <strong id="fps">0</strong></span>
+      <span>Particles: <strong id="pc">0</strong></span>
+    </div>
+  </div>
+  <div id="hint">&/x1f5b1; Drag to interact &mbsp;|&nbsp; Space to reset</div>
+</div>
+
+<script>
+(function(){"use strict";
+// ==============================================================================================
+//  CONFIGURATION  (abstract units, container ~ [0,10] x [0,7])
+// ==============================================================================================
+var CANVAS_W=900, CANVAS_H=630;
+var SIM_W=10, SIM_H=7;
+var SCALE=CANVAS_W/SIM_W;              // px per abstract unit (= 90)
+
+var H  = 0.6;                           // smoothing radius
+var H2 = H*H;
+
+var STIFFNESS=6000;
+var DEF_VISC=0.2;
+var DEF_G=15;
+var SUBSTEPS=5;
+var BND_DAMP=0.35;
+var MOUSE_R=H*4;
+var MOUSE_STR=200;
+
+// ==============================================================================================
+//  KERNEL FUNCTIONS  (unnormalised)
+// ==============================================================================================
+function poly6(r2){
+  if(r2>=H2)return 0;
+  var d=H2-r2;
+  return d*d*d;
+}
+function spikyGradMag(r){
+  if(r>=H||r<1e-9)return 0;
+  var d=H-r;
+  return d*d;
+}
+function viscLaplacian(r){
+  if(r>=H)return 0;
+  return H-r;
+}
+
+// ==============================================================================================
+//  PARTICLE
+// ==============================================================================================
+function Particle(x,y){
+  this.x=x;this.y=y;
+  this.vx=0;this.vy=0;
+  this.ax=0;this.ay=0;
+  this.density=0;this.pressure=0;
+}
+
+// ==============================================================================================
+//  SPH ENGINE  (physics module)
+// ==============================================================================================
+function SPHEngine(){
+  this.particles=[];
+  this.grid=new Map();
+  this.cs=H;
+  this.mass=0;
+  this.restDensity=0;
+  this.k=STIFFNESS;
+  this.mu=DEF_VISC;
+  this.g=DEF_G;
+}
+
+SPHEngine.prototype._key=function(cx,cy){return cx<<16|(cy&0xFFFF);};
+
+SPHEngine.prototype.buildGrid=function(){
+  this.grid.clear();
+  var cs=this.cs, ps=this.particles;
+  for(var i=0;i<ps.length;i++){
+    var p=ps[i];
+    var cx=Math.floor(p.x/cs), cy=Math.floor(p.y/cs);
+    var k=this._key(cx,cy);
+    var b=this.grid.get(k);
+    if(!b){b=[];this.grid.set(k,b);}
+    b.push(i);
+  }
+};
+
+SPHEngine.prototype._neighbors=function(px,py){
+  var cs=this.cs;
+  var cx=Math.floor(px/cs), cy=Math.floor(py/cs);
+  var list=[];
+  for(var dx=-1;dx<=1;dx++)
+    for(var dy=-1;dy<=1;dy++){
+      var b=this.grid.get(this._key(cx+dx,cy+dy));
+      if(b)for(var i=0;i<b.length;i++)list.push(b[i]);
+    }
+  return list;
+};
+
+SPHEngine.prototype.calcDensity=function(){
+  var ps=this.particles, m=this.mass;
+  var k=this.k, r0=this.restDensity;
+  for(var i=0;i<ps.length;i++){
+    var pi=ps[i], rho=0;
+    var nbs=this._neighbors(pi.x,pi.y);
+    for(var ni=0;ni<nbs.length;ni++){
+      var pj=ps[nbs[ni]];
+      var dx=pi.x-pj.x, dy=pi.y-pj.y;
+      rho+=m*poly6(dx*dx+dy*dy);
+    }
+    pi.density=rho;
+    pi.pressure=Math.max(0,k*(rho-r0));
+  }
+};
+
+SPHEngine.prototype.calcForces=function(){
+  var ps=this.particles, m=this.mass, mu=this.mu;
+  for(var i=0;i<ps.length;i++){ps[i].ax=0;ps[i].ay=0;}
+
+  for(var i=0;i<ps.length;i++){
+    var pi=ps[i], axi=0, ayi=0;
+    var ri=pi.density;
+    if(ri<1e-9)continue;
+    var ril=ri*ri;
+
+    var nbs=this._neighbors(pi.x,pi.y);
+    for(var ni=0;ni<nbs.length;ni++){
+      var j=nbs[ni];
+      if(i===j)continue;
+      var pj=ps[j];
+      var dx=pi.x-pj.x, dy=pi.y-pj.y;
+      var r2=dx*dx+dy*dy;
+      if(r2>=H2||r2<1e-16)continue;
+      var r=Math.sqrt(r2), invR=1/r;
+
+      var rj=pj.density;
+      if(rj<1e-9)continue;
+      var rjl=rj*rj;
+
+      // pressure  (symmetric form from Muller 2003)
+      var pTerm=pi.pressure/ril + pj.pressure/rjl;
+      var mag=spikyGradMag(r);
+      axi += m*pTerm*mag*dx*invR;
+      ayi += m*pTerm*mag*dy*invR;
+
+      // viscosity
+      var lap=viscLaplacian(r);
+      var vt=mu*m/Math.max(rj,1e-9);
+      axi += vt*lap*(pj.vx-pi.vx);
+      ayi += vt*lap*(pj.vy-pi.vy);
+    }
+
+    ayi += this.g;     // gravity downward
+    pi.ax=axi; pi.ay=ayi;
+  }
+};
+
+SPHEngine.prototype.enforceBounds=function(){
+  var m=H*0.3;
+  var xMin=m, xMax=SIM_W-m;
+  var yMin=m, yMax=SIM_H-m;
+  for(var i=0;i<this.particles.length;i++){
+    var p=this.particles[i];
+    if(p.x<xMin){p.x=xMin;p.vx*=-BND_DAMP};
+    if(p.x>xMax){p.x=xMax;p.vx*=-BND_DAMP};
+    if(p.y<yMin){p.y=yMin;p.vy*=-BND_DAMP;}
+    if(p.y>yMax){p.y=yMax;p.vy*=-BND_DAMP};
+  }
+};
+
+SPHEngine.prototype.applyMouse=function(mx,my,pmx,pmy,active){
+  if(!active)return;
+  var mdx=mx-pmx, mdy=my-pmy;
+  var mSpeed=Math.sqrt(mdx*mdx+mdy*mdy);
+  var ps=this.particles;
+
+  for(var i=0;i<ps.length;i++){
+    var p=ps[i];
+    var dx=p.x-mx, dy=p.y-my;
+    var dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist>=MOUSE_R||dist<1e-6)continue;
+    var t=1-dist/MOUSE_R;
+    var str=t*t*MOUSE_STR;
+    if(mSpeed>0.001){
+      var nx=mdx/mSpeed, ny=mdy/mSpeed;
+      p.vx+=nx*str*0.0003;
+      p.vy+=ny*str*0.0003;
+    } else {
+      var invD=1/dist;
+      p.vx+=dx*invD*str*0.0003;
+      p.vy+=dy*invD*str*0.0003;
+    }
+  }
+};
+
+SPHEngine.prototype.step=function(subDt,mouse){
+  this.buildGrid();
+  this.calcDensity();
+  if(mouse)this.applyMouse(mouse.x,mouse.y,mouse.px,mouse.py,mouse.active);
+  this.calcForces();
+
+  var ps=this.particles;
+  for(var i=0;i<ps.length;i++){
+    var p=ps[i];
+    // ax/ay are already specific forces (accelerations)
+    p.vx += p.ax * subDt;
+    p.vy += p.ay * subDt;
+    p.x  += p.vx * subDt;
+    p.y  += p.vy * subDt;
+  }
+  this.enforceBounds();
+};
+
+SPHEngine.prototype.initDamBreak=function(targetCount){
+  var spacing=0.18;
+  var aspect=0.55;
+  var cols=Math.max(3,Math.round(Math.sqrt(targetCount*aspect)));
+  var rows=Math.max(3,Math.round(targetCount/cols));
+  var damW=cols*spacing, damH=rows*spacing;
+  var left=0.6, top=0.5;
+
+  this.particles=[];
+  var jit=spacing*0.15;
+  for(var i=0;i<cols;i++){
+    for(var j=0;j<rows;j++){
+      var x=left+i*spacing+spacing*0.5+(Math.random()-0.5)*jit;
+      var y=top +j*spacing+spacing*0.5+(Math.random()-0.5)*jit;
+      if(x>SIM_W-spacing||y>SIM_H-spacing)continue;
+      this.particles.push(new Particle(x,y));
+    }
+  }
+
+  this.mass=1;
+
+  // auto-calibrate rest density from initial grid
+  this.buildGrid();
+  this.calcDensity();
+  var sum=0;
+  for(var i=0;i<this.particles.length;i++)sum+=this.particles[i].density;
+  this.restDensity=sum/this.particles.length;
+};
+
+// ==============================================================================================
+//  RENDERER  (rendering module)
+// ==============================================================================================
+function Renderer(canvas){
+  this.canvas=canvas;
+  this.ctx=canvas.getContext("2d");
+  canvas.width=CANVAS_W; canvas.height=CANVAS_H;
+  this.scale=SCALE;
+}
+
+Renderer.prototype.draw=function(particles){
+  var ctx=this.ctx, s=this.scale;
+  var w=this.canvas.width, h=this.canvas.height;
+
+  // background
+  ctx.fillStyle="#080e16";
+  ctx.fillRect(0,0,w,h);
+
+  // outer border
+  ctx.strokeStyle="#3a506b";
+  ctx.lineWidth=3;
+  ctx.strokeRect(2,2,w-4,h-4);
+
+  // inner border
+  ctx.strokeStyle="#1b2a3f";
+  ctx.lineWidth=1;
+  ctx.strokeRect(5,5,w-10,h-10);
+
+  // particles
+  var r=0.18*s*0.7;  // render radius in px
+  for(var i=0;i<particles.length;i++){
+    var p=particles[i];
+    var sx=p.x*s, sy=p.y*s;
+    var speed=Math.sqrt(p.vx*p.vx+p.vy*p.vy);
+    var t=Math.min(speed/5,1);
+    var red  =Math.floor(10+t*170);
+    var green=Math.floor(60+t*140);
+    var blue =Math.floor(130+t*100);
+    ctx.beginPath();
+    ctx.arc(sx,sy,r,0,Math.PI*2);
+    ctx.fillStyle="rgba("+red+","+green+","+blue+",0.28)";
+    ctx.fill();
+  }
+};
+
+// ==============================================================================================
+//  MAIN APP
+// ==============================================================================================
+var canvas=document.getElementById("canvas");
+var fpsEl=document.getElementById("fps");
+var cntEl=document.getElementById("pc");
+var pv=document.getElementById("pv");
+var vv=document.getElementById("vv");
+var gv=document.getElementById("gv");
+var ps=document.getElementById("ps");
+var vs=document.getElementById("vs");
+var gs=document.getElementById("gs");
+
+var renderer=new Renderer(canvas);
+var engine=new SPHEngine();
+
+var mouse={x:0,y:0,px:0,py:0,active:false};
+
+function screenToSim(sx,sy){
+  var rect=canvas.getBoundingClientRect();
+  return {
+    x:(sx-rect.left)/rect.width *SIM_W,
+    y:(sy-rect.top) /rect.height*SIM_H
+  };
+}
+
+canvas.addEventListener("mousedown",function(e){
+  mouse.active=true;
+  var s=screenToSim(e.clientX,e.clientY);
+  mouse.x=s.x;mouse.y=s.y;mouse.px=s.x;mouse.py=s.y;
+  e.preventDefault();
+});
+
+window.addEventListener("mousemove",function(e){
+  if(!mouse.active)return;
+  mouse.px=mouse.x;mouse.py=mouse.y;
+  var s=screenToSim(e.clientX,e.clientY);
+  mouse.x=s.x;mouse.y=s.y;
+});
+
+window.addEventListener("mouseup",function(){mouse.active=false;});
+
+// touch
+canvas.addEventListener("touchstart",function(e){
+  if(e.touches.length===1){
+    mouse.active=true;
+    var s=screenToSim(e.touches[0].clientX,e.touches[0].clientY);
+    mouse.x=s.x;mouse.y=s.y;mouse.px=s.x;mouse.py=s.y;
+  }
+  e.preventDefault();
+},{passive:false});
+
+canvas.addEventListener("touchmove",function(e){
+  if(!mouse.active||e.touches.length!==1)return;
+  mouse.px=mouse.x;mouse.py=mouse.y;
+  var s=screenToSim(e.touches[0].clientX,e.touches[0].clientY);
+  mouse.x=s.x;mouse.y=s.y;
+  e.preventDefault();
+},{passive:false});
+
+canvas.addEventListener("touchend",function(){mouse.active=false;});
+
+// keyboard
+window.addEventListener("keydown",function(e){
+  if(e.code==="Space"){e.preventDefault();reset();}
+});
+
+// sliders
+ps.addEventListener("input",function(){pv.textContent=this.value;});
+ps.addEventListener("change",function(){reset(parseInt(this.value));});
+
+vs.addEventListener("input",function(){
+  var v=parseInt(this.value)/100;
+  vv.textContent=v.toFixed(2);
+  engine.mu=v;
+});
+
+gs.addEventListener("input",function(){
+  var v=parseFloat(this.value);
+  gv.textContent=v.toFixed(1);
+  engine.g=v;
+});
+
+// animation
+var lastTime=0;
+var fpsHist=[], fpsIdx=0;
+for(var i=0;i<30;i++)fpsHist.push(60);
+
+function reset(count){
+  var n=count||parseInt(ps.value);
+  engine.initDamBreak(n);
+  cntEl.textContent=engine.particles.length;
+  ps.value=n;pv.textContent=n;
+}
+
+function animate(timestamp){
+  if(lastTime===0)lastTime=timestamp;
+  var rawDt=(timestamp-lastTime)/1000;
+  lastTime=timestamp;
+  if(rawDt>0.1)rawDt=0.1;
+  if(rawDt<0.001)rawDt=0.001;
+
+  // FPS
+  var fps=1/rawDt;
+  fpsHist[fpsIdx%30]=fps;fpsIdx++;
+
+  // physics sub-stepping
+  var subDt=Math.min(rawDt,0.05)/SUBSTEPS;
+  var m={x:mouse.x,y:mouse.y,px:mouse.px,py:mouse.py,active:mouse.active};
+  for(var s=0;s<SUBSTEPS;s++)engine.step(subDt,m);
+
+  // render
+  renderer.draw(engine.particles);
+
+  // UI update (throttled)
+  if(fpsIdx%4===0){
+    var sum=0;
+    for(var i=0;i<30;i++)sum+=fpsHist[i];
+    fpsEl.textContent=(sum/30).toFixed(1);
+    cntEl.textContent=engine.particles.length;
+  }
+
+  requestAnimationFrame(animate);
+}
+
+// start
+reset(400);
+requestAnimationFrame(animate);
+})();
+</script>
+</body>
+</html>

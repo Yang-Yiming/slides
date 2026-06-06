@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPH 2D Fluid Simulator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #1a1a2e;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #e0e0e0;
+  }
+  #sidebar {
+    width: 260px;
+    min-width: 260px;
+    background: #16213e;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    border-right: 1px solid #0f3460;
+    z-index: 10;
+    overflow-y: auto;
+  }
+  #sidebar h1 {
+    font-size: 1.3em;
+    color: #4cc9f0;
+    text-align: center;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #0f3460;
+    padding-bottom: 12px;
+  }
+  .control-group { display: flex; flex-direction: column; gap: 4px; }
+  .control-group label {
+    font-size: 0.8em;
+    color: #a0a0b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .control-group .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .control-group input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    background: #0f3460;
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+  }
+  .control-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #4cc9f0;
+    cursor: pointer;
+    border: 2px solid #16213e;
+  }
+  .value-badge {
+    background: #0f3460;
+    color: #4cc9f0;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    min-width: 48px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  button {
+    background: #4cc9f0;
+    color: #1a1a2e;
+    border: none;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 0.9em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    letter-spacing: 0.5px;
+  }
+  button:hover { background: #7ed9f8; }
+  button:active { background: #2db8e0; }
+  .stats {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .stat {
+    flex: 1;
+    background: #0f3460;
+    border-radius: 6px;
+    padding: 10px;
+    text-align: center;
+  }
+  .stat .value {
+    font-size: 1.4em;
+    font-weight: 700;
+    color: #4cc9f0;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .label {
+    font-size: 0.7em;
+    color: #a0a0b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+  }
+  #canvas-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  canvas {
+    border-radius: 8px;
+    box-shadow: 0 0 40px rgba(76, 201, 240, 0.15);
+    cursor: crosshair;
+  }
+  .hint {
+    font-size: 0.7em;
+    color: #606080;
+    text-align: center;
+    line-height: 1.6;
+    border-top: 1px solid #0f3460;
+    padding-top: 12px;
+  }
+  .hint span { color: #4cc9f0; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h1>SPH Fluid Sim</h1>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="value" id="fps">60</div>
+      <div class="label">FPS</div>
+    </div>
+    <div class="stat">
+      <div class="value" id="pcount">500</div>
+      <div class="label">Particles</div>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <label>Particle Count</label>
+    <div class="row">
+      <input type="range" id="particleSlider" min="100" max="1000" value="500" step="50">
+      <span class="value-badge" id="particleVal">500</span>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <label>Viscosity <span style="color:#606080">(μ)</span></label>
+    <div class="row">
+      <input type="range" id="viscSlider" min="0" max="100" value="25" step="1">
+      <span class="value-badge" id="viscVal">0.25</span>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <label>Gravity <span style="color:#606080">(px/s²)</span></label>
+    <div class="row">
+      <input type="range" id="gravSlider" min="200" max="3000" value="1200" step="50">
+      <span class="value-badge" id="gravVal">1200</span>
+    </div>
+  </div>
+
+  <button id="resetBtn">Reset Simulation (Space)</button>
+
+  <div class="hint">
+    <span>Drag</span> to stir fluid<br>
+    <span>Space</span> to reset
+  </div>
+</div>
+
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+</div>
+
+<script>
+// =====================================================================
+// SPH 2D Fluid Simulator
+// Smoothed Particle Hydrodynamics with dam break initialization
+// =====================================================================
+
+// ── Canvas Setup ────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+const SIM_W = 800;
+const SIM_H = 500;
+canvas.width = SIM_W;
+canvas.height = SIM_H;
+
+// Responsive canvas scaling
+function resizeCanvas() {
+  const wrap = document.getElementById('canvas-wrap');
+  const maxW = wrap.clientWidth - 40;
+  const maxH = wrap.clientHeight - 40;
+  const scale = Math.min(maxW / SIM_W, maxH / SIM_H);
+  canvas.style.width = (SIM_W * scale) + 'px';
+  canvas.style.height = (SIM_H * scale) + 'px';
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ── Spatial Hash Grid ───────────────────────────────────────────────
+// Uniform grid for O(n) neighbor search. Cell size = smoothing radius h.
+class SpatialHash {
+  constructor(cellSize) {
+    this.cellSize = cellSize;
+    this.table = {};
+    this.keys = [];
+  }
+
+  clear() {
+    for (let i = 0; i < this.keys.length; i++) {
+      this.table[this.keys[i]].length = 0;
+    }
+    this.keys.length = 0;
+  }
+
+  getCell(cx, cy) {
+    const key = cx + ',' + cy;
+    let cell = this.table[key];
+    if (!cell) {
+      cell = [];
+      this.table[key] = cell;
+    }
+    if (cell.length === 0) {
+      this.keys.push(key);
+    }
+    return cell;
+  }
+
+  insert(i, x, y) {
+    const cx = Math.floor(x / this.cellSize);
+    const cy = Math.floor(y / this.cellSize);
+    this.getCell(cx, cy).push(i);
+  }
+
+  query(x, y, out) {
+    out.length = 0;
+    const cx = Math.floor(x / this.cellSize);
+    const cy = Math.floor(y / this.cellSize);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const cell = this.table[(cx + dx) + ',' + (cy + dy)];
+        if (cell) {
+          for (let k = 0; k < cell.length; k++) {
+            out.push(cell[k]);
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── SPH Kernel Functions (2D normalized) ────────────────────────────
+// Reference: Müller et al. 2003, adapted for 2D
+
+const H = 25;                        // smoothing radius
+const H2 = H * H;
+// Precomputed kernel coefficients
+const POLY6_COEFF  = 4.0 / (Math.PI * Math.pow(H, 8));
+const SPIKY_COEFF  = 30.0 / (Math.PI * Math.pow(H, 5));
+const VISC_COEFF   = 40.0 / (Math.PI * Math.pow(H, 5));
+
+// Poly6 kernel value: W(r,h) = 4/(πh⁸) * (h² - r²)³
+function poly6(r2) {
+  if (r2 >= H2) return 0;
+  const d = H2 - r2;
+  return POLY6_COEFF * d * d * d;
+}
+
+// Spiky kernel gradient magnitude: |∇W(r,h)| = 30/(πh⁵) * (h - r)²
+function spikyGradMag(r) {
+  if (r <= 0 || r >= H) return 0;
+  const d = H - r;
+  return SPIKY_COEFF * d * d;
+}
+
+// Viscosity kernel Laplacian: ∇²W(r,h) = 40/(πh⁵) * (h - r)
+function viscLaplacian(r) {
+  if (r >= H) return 0;
+  return VISC_COEFF * (H - r);
+}
+
+// ── Simulation State ────────────────────────────────────────────────
+const MASS = 1.0;
+const GAS_CONSTANT = 300;
+const RESTITUTION = 0.3;
+const SUB_STEPS = 3;
+const DT_BASE = 1 / 60;
+
+let sim = {
+  count: 500,
+  gravity: 1200,
+  viscosity: 0.25,
+};
+
+// Flat arrays for particle data — avoids GC pressure in hot loops
+let N = 0;
+let px, py, vx, vy, rho, press, fx, fy;
+let restDensity = 5.0; // auto-computed after init
+const hash = new SpatialHash(H);
+const neighbors = [];   // reusable neighbor index buffer
+
+// ── Offscreen Canvas for Particle Gradient ──────────────────────────
+const particleRadius = 8;
+const gradCanvas = document.createElement('canvas');
+gradCanvas.width = particleRadius * 2 + 2;
+gradCanvas.height = particleRadius * 2 + 2;
+const gctx = gradCanvas.getContext('2d');
+const gradient = gctx.createRadialGradient(
+  particleRadius, particleRadius, 1,
+  particleRadius, particleRadius, particleRadius
+);
+gradient.addColorStop(0, 'rgba(130, 200, 255, 0.95)');
+gradient.addColorStop(0.4, 'rgba(60, 140, 220, 0.75)');
+gradient.addColorStop(0.75, 'rgba(20, 70, 160, 0.4)');
+gradient.addColorStop(1, 'rgba(10, 30, 100, 0.05)');
+gctx.fillStyle = gradient;
+gctx.fillRect(0, 0, gradCanvas.width, gradCanvas.height);
+
+// ── Particle Initialization ─────────────────────────────────────────
+function allocateArrays(count) {
+  N = count;
+  px = new Float64Array(N);
+  py = new Float64Array(N);
+  vx = new Float64Array(N);
+  vy = new Float64Array(N);
+  rho = new Float64Array(N);
+  press = new Float64Array(N);
+  fx = new Float64Array(N);
+  fy = new Float64Array(N);
+}
+
+function initDamBreak() {
+  allocateArrays(sim.count);
+
+  const damW = SIM_W * 0.25;
+  const damH = SIM_H * 0.7;
+  const startX = 30;
+  const startY = SIM_H - damH - 20;
+
+  // Hexagonal close-packed grid
+  const spacing = Math.sqrt((damW * damH) / sim.count) * 0.95;
+  const rowH = spacing * Math.sqrt(3) / 2;
+  const cols = Math.floor(damW / spacing);
+  const rows = Math.floor(damH / rowH);
+
+  let idx = 0;
+  for (let row = 0; row < rows && idx < N; row++) {
+    const offsetX = (row % 2 === 0) ? 0 : spacing / 2;
+    for (let col = 0; col < cols && idx < N; col++) {
+      const x = startX + offsetX + col * spacing;
+      const y = startY + row * rowH;
+      if (x < startX + damW && y < startY + damH) {
+        px[idx] = x;
+        py[idx] = y;
+        vx[idx] = 0;
+        vy[idx] = 0;
+        idx++;
+      }
+    }
+  }
+
+  // If we couldn't fit all particles, shrink arrays
+  if (idx < N) {
+    N = idx;
+    sim.count = N;
+    document.getElementById('particleSlider').value = N;
+    document.getElementById('particleVal').textContent = N;
+  }
+
+  // Auto-compute rest density from interior particle
+  computeRestDensity();
+}
+
+function computeRestDensity() {
+  // Use a particle near the dam center as reference
+  const midX = SIM_W * 0.125 + 30;
+  const midY = SIM_H * 0.5;
+  let bestI = 0, bestDist = Infinity;
+  for (let i = 0; i < N; i++) {
+    const dx = px[i] - midX;
+    const dy = py[i] - midY;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestDist) { bestDist = d2; bestI = i; }
+  }
+
+  // Build spatial hash and compute density for reference particle
+  hash.clear();
+  for (let i = 0; i < N; i++) hash.insert(i, px[i], py[i]);
+
+  hash.query(px[bestI], py[bestI], neighbors);
+  let rhoRef = 0;
+  for (let k = 0; k < neighbors.length; k++) {
+    const j = neighbors[k];
+    const dx = px[bestI] - px[j];
+    const dy = py[bestI] - py[j];
+    rhoRef += MASS * poly6(dx * dx + dy * dy);
+  }
+  restDensity = Math.max(rhoRef, 0.5);
+}
+
+// ── Physics Step ────────────────────────────────────────────────────
+function physicsStep(dt) {
+  // 1. Build spatial hash
+  hash.clear();
+  for (let i = 0; i < N; i++) hash.insert(i, px[i], py[i]);
+
+  // 2. Compute density & pressure
+  for (let i = 0; i < N; i++) {
+    hash.query(px[i], py[i], neighbors);
+    let rhoI = 0;
+    for (let k = 0; k < neighbors.length; k++) {
+      const j = neighbors[k];
+      const dx = px[i] - px[j];
+      const dy = py[i] - py[j];
+      rhoI += MASS * poly6(dx * dx + dy * dy);
+    }
+    rho[i] = Math.max(rhoI, 0.1 * restDensity); // prevent near-zero density
+    press[i] = Math.max(0, GAS_CONSTANT * (rho[i] - restDensity)); // no tensile instability
+  }
+
+  // 3. Compute forces (pressure + viscosity)
+  for (let i = 0; i < N; i++) {
+    fx[i] = 0;
+    fy[i] = 0;
+  }
+
+  for (let i = 0; i < N; i++) {
+    hash.query(px[i], py[i], neighbors);
+    for (let k = 0; k < neighbors.length; k++) {
+      const j = neighbors[k];
+      if (i >= j) continue; // process each pair once, symmetric forces
+
+      const dx = px[i] - px[j];
+      const dy = py[i] - py[j];
+      const r2 = dx * dx + dy * dy;
+      if (r2 >= H2 || r2 < 1e-6) continue;
+
+      const r = Math.sqrt(r2);
+      const invR = 1 / r;
+      const nx = dx * invR;
+      const ny = dy * invR;
+
+      // Pressure force (symmetric form for momentum conservation)
+      const gradMag = spikyGradMag(r);
+      const pTerm = MASS * (press[i] + press[j]) / (2.0 * rho[j]);
+      const pfMag = -pTerm * gradMag;
+
+      fx[i] += pfMag * nx;
+      fy[i] += pfMag * ny;
+      fx[j] -= pfMag * nx;
+      fy[j] -= pfMag * ny;
+
+      // Viscosity force (symmetric)
+      const lap = viscLaplacian(r);
+      const viscTerm = sim.viscosity * MASS * lap / rho[j];
+      const dvx = vx[j] - vx[i];
+      const dvy = vy[j] - vy[i];
+
+      fx[i] += viscTerm * dvx;
+      fy[i] += viscTerm * dvy;
+      fx[j] -= viscTerm * dvx;
+      fy[j] -= viscTerm * dvy;
+    }
+  }
+
+  // 4. Integrate (semi-implicit Euler)
+  // v_new = v + (F/m + g) * dt, then x_new = x + v_new * dt
+  // F/m = fx[i] / rho[i] for SPH forces; gravity is a body acceleration
+  for (let i = 0; i < N; i++) {
+    const invRho = 1.0 / rho[i];
+    vx[i] += (fx[i] * invRho) * dt;
+    vy[i] += ((fy[i] * invRho) + sim.gravity) * dt;
+
+    px[i] += vx[i] * dt;
+    py[i] += vy[i] * dt;
+  }
+
+  // 5. Boundary handling
+  const margin = 2;
+  for (let i = 0; i < N; i++) {
+    if (px[i] < margin) {
+      px[i] = margin;
+      vx[i] = Math.abs(vx[i]) * RESTITUTION;
+    } else if (px[i] > SIM_W - margin) {
+      px[i] = SIM_W - margin;
+      vx[i] = -Math.abs(vx[i]) * RESTITUTION;
+    }
+    if (py[i] < margin) {
+      py[i] = margin;
+      vy[i] = Math.abs(vy[i]) * RESTITUTION;
+    } else if (py[i] > SIM_H - margin) {
+      py[i] = SIM_H - margin;
+      vy[i] = -Math.abs(vy[i]) * RESTITUTION;
+    }
+  }
+}
+
+// ── Rendering ───────────────────────────────────────────────────────
+function drawBackground() {
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, SIM_W, SIM_H);
+
+  // Subtle grid
+  ctx.strokeStyle = 'rgba(15, 52, 96, 0.3)';
+  ctx.lineWidth = 0.5;
+  const gs = 40;
+  for (let x = gs; x < SIM_W; x += gs) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, SIM_H); ctx.stroke();
+  }
+  for (let y = gs; y < SIM_H; y += gs) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(SIM_W, y); ctx.stroke();
+  }
+}
+
+function render() {
+  drawBackground();
+
+  const pr = particleRadius;
+  const pd = pr * 2;
+
+  for (let i = 0; i < N; i++) {
+    const x = px[i] - pr;
+    const y = py[i] - pr;
+    ctx.drawImage(gradCanvas, x, y, pd, pd);
+  }
+
+  // Draw boundary outline
+  ctx.strokeStyle = 'rgba(76, 201, 240, 0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(1, 1, SIM_W - 2, SIM_H - 2);
+}
+
+// ── Mouse Interaction ───────────────────────────────────────────────
+let mouseX = 0, mouseY = 0;
+let prevMouseX = 0, prevMouseY = 0;
+let mouseDown = false;
+
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = SIM_W / rect.width;
+  const scaleY = SIM_H / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY,
+  };
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  mouseDown = true;
+  const pos = getCanvasPos(e);
+  mouseX = pos.x;
+  mouseY = pos.y;
+  prevMouseX = mouseX;
+  prevMouseY = mouseY;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const pos = getCanvasPos(e);
+  if (mouseDown) {
+    prevMouseX = mouseX;
+    prevMouseY = mouseY;
+  }
+  mouseX = pos.x;
+  mouseY = pos.y;
+  if (!mouseDown) {
+    prevMouseX = mouseX;
+    prevMouseY = mouseY;
+  }
+});
+
+canvas.addEventListener('mouseup', () => { mouseDown = false; });
+canvas.addEventListener('mouseleave', () => { mouseDown = false; });
+
+// Touch support
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  mouseDown = true;
+  const pos = getCanvasPos(e.touches[0]);
+  mouseX = pos.x; mouseY = pos.y;
+  prevMouseX = mouseX; prevMouseY = mouseY;
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (mouseDown) {
+    prevMouseX = mouseX;
+    prevMouseY = mouseY;
+  }
+  const pos = getCanvasPos(e.touches[0]);
+  mouseX = pos.x; mouseY = pos.y;
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { mouseDown = false; });
+
+function applyMouseForce() {
+  if (!mouseDown) return;
+
+  const mdx = mouseX - prevMouseX;
+  const mdy = mouseY - prevMouseY;
+  const mouseSpeed = Math.sqrt(mdx * mdx + mdy * mdy);
+  if (mouseSpeed < 0.5) return;
+
+  const nx = mdx / mouseSpeed;
+  const ny = mdy / mouseSpeed;
+  const forceRadius = H * 2.5;
+  const forceR2 = forceRadius * forceRadius;
+  const forceStrength = 8000;
+
+  for (let i = 0; i < N; i++) {
+    const dx = px[i] - mouseX;
+    const dy = py[i] - mouseY;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < forceR2) {
+      const d = Math.sqrt(d2);
+      const falloff = 1 - d / forceRadius;
+      const f = falloff * falloff * forceStrength;
+      vx[i] += nx * f * DT_BASE;
+      vy[i] += ny * f * DT_BASE;
+    }
+  }
+}
+
+// ── Keyboard ────────────────────────────────────────────────────────
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    resetSimulation();
+  }
+});
+
+// ── Reset ───────────────────────────────────────────────────────────
+function resetSimulation() {
+  initDamBreak();
+}
+
+// ── UI Controls ─────────────────────────────────────────────────────
+const particleSlider = document.getElementById('particleSlider');
+const particleVal = document.getElementById('particleVal');
+const viscSlider = document.getElementById('viscSlider');
+const viscVal = document.getElementById('viscVal');
+const gravSlider = document.getElementById('gravSlider');
+const gravVal = document.getElementById('gravVal');
+const resetBtn = document.getElementById('resetBtn');
+const fpsEl = document.getElementById('fps');
+const pcountEl = document.getElementById('pcount');
+
+particleSlider.addEventListener('input', () => {
+  sim.count = parseInt(particleSlider.value);
+  particleVal.textContent = sim.count;
+  resetSimulation();
+});
+
+viscSlider.addEventListener('input', () => {
+  sim.viscosity = parseInt(viscSlider.value) / 100;
+  viscVal.textContent = sim.viscosity.toFixed(2);
+});
+
+gravSlider.addEventListener('input', () => {
+  sim.gravity = parseInt(gravSlider.value);
+  gravVal.textContent = sim.gravity;
+});
+
+resetBtn.addEventListener('click', resetSimulation);
+
+// ── FPS Tracking ────────────────────────────────────────────────────
+const fpsHistory = new Float64Array(60);
+let fpsIdx = 0;
+let fpsHistoryFilled = false;
+let lastFrameTime = performance.now();
+
+function updateFPS(now) {
+  const dt = now - lastFrameTime;
+  lastFrameTime = now;
+  fpsHistory[fpsIdx] = dt > 0 ? 1000 / dt : 60;
+  fpsIdx++;
+  if (fpsIdx >= 60) {
+    fpsIdx = 0;
+    fpsHistoryFilled = true;
+  }
+  const count = fpsHistoryFilled ? 60 : fpsIdx;
+  let sum = 0;
+  for (let i = 0; i < count; i++) sum += fpsHistory[i];
+  const avg = sum / count;
+  fpsEl.textContent = Math.round(avg);
+}
+
+// ── Main Loop ───────────────────────────────────────────────────────
+function loop(timestamp) {
+  updateFPS(timestamp);
+
+  // Fixed-timestep physics with sub-stepping
+  const subDt = DT_BASE / SUB_STEPS;
+  for (let s = 0; s < SUB_STEPS; s++) {
+    applyMouseForce();
+    physicsStep(subDt);
+  }
+
+  render();
+  pcountEl.textContent = N;
+
+  requestAnimationFrame(loop);
+}
+
+// ── Startup ─────────────────────────────────────────────────────────
+initDamBreak();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

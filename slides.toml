@@ -38,3 +38,12 @@ kind = "slidev"
 source = "spark-proj-2"
 entry = "index.html"
 updated = "2026-06-01"
+
+[[deck]]
+id = "spark-pre-talk"
+title = "From Model to Agent"
+description = "Spark pre-class talk on coding harness design."
+kind = "slidev"
+source = "spark-pre-talk"
+entry = "index.html"
+updated = "2026-06-06"
