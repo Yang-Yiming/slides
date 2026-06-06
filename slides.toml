@@ -1,0 +1,40 @@
+site_title = "Slides"
+site_description = "A small index of published slide decks."
+base_url = "/slides/"
+output_dir = "site"
+
+[[deck]]
+id = "make_gyx"
+title = "Makefile & CMake Tutorial"
+description = "Simple tutorial for Makefile & CMake."
+kind = "slidev"
+source = "make_gyx"
+entry = "index.html"
+updated = "2025-09-09"
+
+[[deck]]
+id = "share_rust"
+title = "SUSTCSC Rust Sharing"
+description = "Share for the SUSTCSC competition - Rust."
+kind = "slidev"
+source = "share_rust"
+entry = "index.html"
+updated = "2025-09-12"
+
+[[deck]]
+id = "fcy_papers"
+title = "Fu Chaoyou Papers"
+description = "Short summary of Prof. Fu Chaoyou's papers (2024-2025)."
+kind = "slidev"
+source = "fcy_papers"
+entry = "index.html"
+updated = "2025-10-13"
+
+[[deck]]
+id = "spark-proj-2"
+title = "Spark Course Project 2"
+description = "Slides of my Spark course project 2."
+kind = "slidev"
+source = "spark-proj-2"
+entry = "index.html"
+updated = "2026-06-01"
